@@ -573,6 +573,11 @@ struct MainLayoutView: View {
                 .frame(width: CGFloat(state.rightPaneWidth))
         }
         .background(Color.lineageBackground)
+        .sheet(item: $state.selectedSessionPivot) { session in
+            SessionDetailPivotView(session: session)
+                .environmentObject(state)
+                .frame(minWidth: 820, minHeight: 640)
+        }
     }
 }
 
@@ -650,6 +655,11 @@ struct SidebarView: View {
                     }
                     .buttonStyle(IconButtonStyle())
                     .help("Refresh Git and Lineage provenance")
+                    Button(action: state.exportAgentTrace) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                    }
+                    .buttonStyle(IconButtonStyle())
+                    .help("Export Agent Trace JSONL")
                 }
                 if let branchMessage = state.branchMessage {
                     Text(branchMessage)
@@ -1671,21 +1681,7 @@ struct ReviewExplanationPaneView: View {
                     if !explanation.providerSessions.isEmpty {
                         SectionBlock("Linked provider sessions") {
                             ForEach(explanation.providerSessions) { session in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(session.sessionID)
-                                        .font(.callout.weight(.semibold))
-                                    Text(session.prompt.isEmpty ? "No prompt captured." : session.prompt)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(session.lastAssistantMessage.isEmpty ? "No final message captured." : session.lastAssistantMessage)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                .padding(10)
-                                .background(Color.black.opacity(0.16))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                LinkedSessionRow(session: session)
                             }
                         }
                     }
@@ -1769,7 +1765,7 @@ struct ProviderProvenanceView: View {
     var session: ProvenanceSession?
 
     var body: some View {
-        SectionBlock("AI provider provenance") {
+        SectionBlock("Session evidence") {
             if let session {
                 SessionEvidenceView(session: session)
             } else {
@@ -1780,7 +1776,125 @@ struct ProviderProvenanceView: View {
     }
 }
 
+struct LinkedSessionRow: View {
+    @EnvironmentObject private var state: AppState
+    var session: ProvenanceSession
+
+    var body: some View {
+        Button {
+            state.showSessionPivot(session)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(session.sessionID)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Image(systemName: "rectangle.stack")
+                        .foregroundStyle(.secondary)
+                }
+                Text(session.prompt.isEmpty ? "No prompt captured." : session.prompt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                HStack {
+                    Pill("\(session.lineRanges.count) ranges", color: .green)
+                    Pill("\(session.filesEdited.count) files", color: .blue)
+                    Pill(session.testsResult, color: session.testsResult == "passed" ? .green : .orange)
+                }
+            }
+            .padding(10)
+            .background(Color.black.opacity(0.16))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open full session evidence and touched code")
+    }
+}
+
+struct SessionDetailPivotView: View {
+    @EnvironmentObject private var state: AppState
+    var session: ProvenanceSession
+
+    private var graphCodeNodes: [ProvenanceNode] {
+        state.provenanceGraph?.linkedCodeNodes(sessionID: session.sessionID) ?? []
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Session Evidence")
+                        .font(.title2.weight(.semibold))
+                    Text("\(session.providerDisplayName) / \(session.sessionID)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                Button(action: state.exportAgentTrace) {
+                    Label("Agent Trace", systemImage: "point.3.connected.trianglepath.dotted")
+                }
+                .buttonStyle(.bordered)
+                Button("Done") {
+                    state.selectedSessionPivot = nil
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(18)
+            Divider().overlay(Color.white.opacity(0.08))
+
+            HSplitView {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionBlock("Code touched") {
+                            SessionTouchedRangesView(ranges: session.lineRanges)
+                            if !graphCodeNodes.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Graph nodes")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    ForEach(graphCodeNodes.prefix(80)) { node in
+                                        HStack {
+                                            Text(node.kind.rawValue)
+                                                .font(.caption2.monospaced())
+                                                .foregroundStyle(.tertiary)
+                                                .frame(width: 72, alignment: .leading)
+                                            Text(node.label)
+                                                .font(.caption)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                            Spacer()
+                                        }
+                                        .padding(7)
+                                        .background(Color.black.opacity(0.14))
+                                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(18)
+                }
+                .frame(minWidth: 260, idealWidth: 320)
+
+                ScrollView {
+                    SessionEvidenceView(session: session)
+                        .environmentObject(state)
+                        .padding(18)
+                }
+                .frame(minWidth: 420)
+            }
+        }
+        .background(Color.lineageBackground)
+    }
+}
+
 struct SessionEvidenceView: View {
+    @EnvironmentObject private var state: AppState
     var session: ProvenanceSession
     @State private var bundle: SessionEvidenceBundle?
     @State private var showAllTools = false
@@ -1800,6 +1914,18 @@ struct SessionEvidenceView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    state.exportAgentTrace()
+                } label: {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                }
+                .help("Export Agent Trace JSONL")
+                Button {
+                    state.showSessionPivot(session)
+                } label: {
+                    Image(systemName: "rectangle.stack")
+                }
+                .help("Open full session evidence")
                 Button {
                     exportMarkdown(evidence)
                 } label: {
@@ -1821,6 +1947,8 @@ struct SessionEvidenceView: View {
             Detail("Linked commit", [evidence.commitSHA, evidence.commitMessage].compactMap { $0 }.joined(separator: " - "))
 
             SessionHierarchySummary(evidence: evidence)
+            SessionTouchedRangesView(ranges: evidence.lineRanges)
+            SessionEventTimelineView(events: evidence.timeline)
 
             DisclosureGroup("Prompt") {
                 EvidenceText(evidence.prompt.isEmpty ? "No prompt captured." : evidence.prompt)
@@ -1877,6 +2005,129 @@ struct SessionEvidenceView: View {
         panel.nameFieldStringValue = defaultName
         panel.canCreateDirectories = true
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+struct SessionTouchedRangesView: View {
+    var ranges: [LineRange]
+
+    private var groupedRanges: [(String, [LineRange])] {
+        Dictionary(grouping: ranges, by: \.file)
+            .map { entry in
+                (entry.key, entry.value.sorted { lhs, rhs in
+                    lhs.start == rhs.start ? lhs.end < rhs.end : lhs.start < rhs.start
+                })
+            }
+            .sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Files and ranges touched")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if groupedRanges.isEmpty {
+                Text("No line ranges were linked for this session.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(groupedRanges, id: \.0) { file, fileRanges in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(file)
+                            .font(.caption.monospaced().weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], alignment: .leading, spacing: 6) {
+                            ForEach(fileRanges) { range in
+                                Text("\(range.start)-\(range.end)")
+                                    .font(.caption2.monospacedDigit().weight(.semibold))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
+                                    .background(Color.green.opacity(0.14))
+                                    .foregroundStyle(Color.green)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .help("\(Int(range.confidence * 100))% \(range.label)")
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.black.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+    }
+}
+
+struct SessionEventTimelineView: View {
+    var events: [SessionTimelineEvent]
+
+    private var groupedEvents: [(String, [SessionTimelineEvent])] {
+        let order = ["Prompt", "Tool", "Decision", "Constraint", "Test", "Final response"]
+        let grouped = Dictionary(grouping: events) { $0.group }
+        return order.compactMap { group in
+            guard let values = grouped[group], !values.isEmpty else { return nil }
+            return (group, values)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Event timeline")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if groupedEvents.isEmpty {
+                Text("No prompt, tool, decision, test, or final-response events were summarized for this session.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(groupedEvents, id: \.0) { group, values in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 7) {
+                                Circle()
+                                    .fill(color(for: group))
+                                    .frame(width: 7, height: 7)
+                                Text(group)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text("\(values.count)")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                            }
+                            ForEach(values) { event in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(event.title)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Text(event.detail.isEmpty ? "No details captured." : event.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(4)
+                                        .textSelection(.enabled)
+                                }
+                                .padding(8)
+                                .background(Color.black.opacity(0.14))
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func color(for group: String) -> Color {
+        switch group {
+        case "Prompt": return .cyan
+        case "Tool": return .blue
+        case "Decision": return .green
+        case "Constraint": return .orange
+        case "Test": return .purple
+        default: return .secondary
+        }
     }
 }
 

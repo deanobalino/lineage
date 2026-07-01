@@ -16,6 +16,27 @@ public struct SessionTranscriptMessage: Codable, Identifiable, Hashable {
     }
 }
 
+public struct SessionTimelineEvent: Codable, Identifiable, Hashable {
+    public var id: String
+    public var group: String
+    public var title: String
+    public var detail: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case group
+        case title
+        case detail
+    }
+
+    public init(id: String = UUID().uuidString, group: String, title: String, detail: String) {
+        self.id = id
+        self.group = group
+        self.title = title
+        self.detail = detail
+    }
+}
+
 public struct SessionEvidenceBundle: Codable, Hashable {
     public var sessionID: String
     public var provider: String
@@ -30,6 +51,8 @@ public struct SessionEvidenceBundle: Codable, Hashable {
     public var commandsRun: [String]
     public var permissionRequests: [String]
     public var filesEdited: [String]
+    public var lineRanges: [LineRange]
+    public var timeline: [SessionTimelineEvent]
     public var testsRun: [String]
     public var testsResult: String
     public var gitDiff: String
@@ -43,6 +66,7 @@ public struct SessionEvidenceLoader {
 
     public func load(session: ProvenanceSession) -> SessionEvidenceBundle {
         let messages = loadMessages(path: session.transcriptPath)
+        let timeline = timelineEvents(session: session)
         return SessionEvidenceBundle(
             sessionID: session.sessionID,
             provider: session.providerDisplayName,
@@ -57,6 +81,8 @@ public struct SessionEvidenceLoader {
             commandsRun: session.commandsRun.map(SecretRedactor.redact),
             permissionRequests: session.permissionRequests.map(SecretRedactor.redact),
             filesEdited: session.filesEdited,
+            lineRanges: session.lineRanges,
+            timeline: timeline,
             testsRun: session.testsRun.map(SecretRedactor.redact),
             testsResult: SecretRedactor.redact(session.testsResult),
             gitDiff: SecretRedactor.redact(session.gitDiff),
@@ -64,6 +90,39 @@ public struct SessionEvidenceLoader {
             commitMessage: session.commitMessage,
             messages: messages
         )
+    }
+
+    private func timelineEvents(session: ProvenanceSession) -> [SessionTimelineEvent] {
+        var events: [SessionTimelineEvent] = []
+        if !session.prompt.isEmpty {
+            events.append(SessionTimelineEvent(group: "Prompt", title: "User prompt", detail: SecretRedactor.redact(session.prompt)))
+        }
+        for tool in session.toolsUsed {
+            events.append(SessionTimelineEvent(group: "Tool", title: tool, detail: "Tool used by \(session.providerDisplayName)."))
+        }
+        for command in session.commandsRun {
+            events.append(SessionTimelineEvent(group: "Tool", title: "Command", detail: SecretRedactor.redact(command)))
+        }
+        for decision in session.decisions {
+            let detail = [
+                decision.context,
+                decision.selectedOptionText.map { "Selected: \($0)" },
+                decision.freeformResponse.map { "Freeform: \($0)" },
+                decision.permissionStatus.map { "Permission: \($0)" },
+                decision.consequences.map { "Consequences: \($0)" }
+            ].compactMap { $0 }.joined(separator: "\n")
+            events.append(SessionTimelineEvent(group: "Decision", title: decision.kind, detail: SecretRedactor.redact(detail)))
+        }
+        for constraint in session.externalConstraints {
+            events.append(SessionTimelineEvent(group: "Constraint", title: constraint.locationLabel, detail: SecretRedactor.redact(constraint.summary)))
+        }
+        for test in session.testsRun {
+            events.append(SessionTimelineEvent(group: "Test", title: test, detail: "Result: \(SecretRedactor.redact(session.testsResult))"))
+        }
+        if !session.lastAssistantMessage.isEmpty {
+            events.append(SessionTimelineEvent(group: "Final response", title: "Final provider message", detail: SecretRedactor.redact(session.lastAssistantMessage)))
+        }
+        return events
     }
 
     private func loadMessages(path: String?) -> [SessionTranscriptMessage] {
@@ -152,6 +211,14 @@ public enum SessionEvidenceExporter {
         ## Files Edited
 
         \(bundle.filesEdited.map { "- \($0)" }.joined(separator: "\n"))
+
+        ## Line Ranges
+
+        \(bundle.lineRanges.map { "- \($0.file):\($0.start)-\($0.end) (\(Int($0.confidence * 100))%, \($0.label))" }.joined(separator: "\n"))
+
+        ## Event Timeline
+
+        \(bundle.timeline.map { "- [\($0.group)] \($0.title): \($0.detail)" }.joined(separator: "\n"))
 
         ## Transcript
 

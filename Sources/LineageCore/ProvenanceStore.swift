@@ -95,6 +95,14 @@ public struct ProvenanceStore {
         }
     }
 
+    public func provenanceGraph() -> ProvenanceGraph {
+        ProvenanceGraphBuilder().build(repoRoot: repoRoot, sessions: sessions(), events: events())
+    }
+
+    public func exportAgentTrace() throws -> URL {
+        try AgentTraceExporter().writeJSONL(repoRoot: repoRoot, sessions: sessions())
+    }
+
     private func commitsMatch(_ lhs: String, _ rhs: String) -> Bool {
         lhs == rhs || lhs.hasPrefix(rhs) || rhs.hasPrefix(lhs)
     }

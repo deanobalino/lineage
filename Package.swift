@@ -21,6 +21,10 @@ let package = Package(
         .executableTarget(
             name: "lineage-capture",
             dependencies: ["LineageCore"]
+        ),
+        .testTarget(
+            name: "LineageCoreTests",
+            dependencies: ["LineageCore"]
         )
     ]
 )

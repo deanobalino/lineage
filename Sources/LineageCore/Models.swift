@@ -449,6 +449,7 @@ public struct ProvenanceSession: Codable, Identifiable, Hashable {
     public var commitMessage: String?
     public var reasoningSummary: String
     public var lineRanges: [LineRange]
+    public var rawTelemetryPayload: JSONValue?
 
     enum CodingKeys: String, CodingKey {
         case provider
@@ -477,6 +478,7 @@ public struct ProvenanceSession: Codable, Identifiable, Hashable {
         case commitMessage = "commit_message"
         case reasoningSummary = "reasoning_summary"
         case lineRanges = "line_ranges"
+        case rawTelemetryPayload = "raw_telemetry_payload"
     }
 
     public init(
@@ -505,7 +507,8 @@ public struct ProvenanceSession: Codable, Identifiable, Hashable {
         commitSHA: String?,
         commitMessage: String?,
         reasoningSummary: String,
-        lineRanges: [LineRange]
+        lineRanges: [LineRange],
+        rawTelemetryPayload: JSONValue? = nil
     ) {
         self.provider = provider
         self.providerDisplayName = providerDisplayName
@@ -533,6 +536,7 @@ public struct ProvenanceSession: Codable, Identifiable, Hashable {
         self.commitMessage = commitMessage
         self.reasoningSummary = reasoningSummary
         self.lineRanges = lineRanges
+        self.rawTelemetryPayload = rawTelemetryPayload
     }
 
     public init(from decoder: Decoder) throws {
@@ -563,6 +567,7 @@ public struct ProvenanceSession: Codable, Identifiable, Hashable {
         commitMessage = try container.decodeIfPresent(String.self, forKey: .commitMessage)
         reasoningSummary = try container.decodeIfPresent(String.self, forKey: .reasoningSummary) ?? ""
         lineRanges = try container.decodeIfPresent([LineRange].self, forKey: .lineRanges) ?? []
+        rawTelemetryPayload = try container.decodeIfPresent(JSONValue.self, forKey: .rawTelemetryPayload)
     }
 }
 

@@ -52,6 +52,11 @@ struct LineageApp: App {
                 .keyboardShortcut("e", modifiers: .command)
                 .disabled(state.explanation == nil)
 
+                Button("Export Agent Trace") {
+                    state.exportAgentTrace()
+                }
+                .disabled(state.repository == nil)
+
                 Divider()
 
                 Button("Close Repository") {
@@ -103,6 +108,8 @@ final class AppState: ObservableObject {
     @Published var reviewLineExplanation: LineExplanation?
     @Published var isLoadingReview = false
     @Published var isExplainingReviewLine = false
+    @Published var selectedSessionPivot: ProvenanceSession?
+    @Published var provenanceGraph: ProvenanceGraph?
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 340
     @AppStorage("rightPaneWidth") var rightPaneWidth: Double = 430
     @AppStorage("projectPaneCollapsed") var projectPaneCollapsed = false
@@ -142,6 +149,7 @@ final class AppState: ObservableObject {
                 self.activeProjectPath = root.path
                 UserDefaults.standard.set(root.path, forKey: self.activeProjectDefaultsKey)
                 self.repository = snapshot
+                self.provenanceGraph = ProvenanceStore(repoRoot: root).provenanceGraph()
                 self.selectedFile = snapshot.files.first { $0.path.hasSuffix("retry_policy.py") } ?? snapshot.files.first
                 self.resetExpandedDirectories(for: snapshot)
                 self.isLoadingRepository = false
@@ -209,6 +217,8 @@ final class AppState: ObservableObject {
         reviewExplanation = nil
         reviewLineExplanation = nil
         isExplainingReviewLine = false
+        selectedSessionPivot = nil
+        provenanceGraph = nil
         if clearActiveProject {
             activeProjectPath = nil
             UserDefaults.standard.removeObject(forKey: activeProjectDefaultsKey)
@@ -269,6 +279,7 @@ final class AppState: ObservableObject {
             await MainActor.run {
                 self.branchMessage = "Showing branch \(branch)."
                 self.repository = snapshot
+                self.provenanceGraph = ProvenanceStore(repoRoot: repository.root).provenanceGraph()
                 self.selectedFile = snapshot.files.first { $0.path == previousFilePath }
                     ?? snapshot.files.first { $0.path.hasSuffix("retry_policy.py") }
                     ?? snapshot.files.first
@@ -291,6 +302,7 @@ final class AppState: ObservableObject {
             let snapshot = GitService().snapshot(repo: repository.root)
             await MainActor.run {
                 self.repository = snapshot
+                self.provenanceGraph = ProvenanceStore(repoRoot: repository.root).provenanceGraph()
                 self.selectedFile = snapshot.files.first { $0.path == previousFilePath }
                     ?? snapshot.files.first { $0.path.hasSuffix("retry_policy.py") }
                     ?? snapshot.files.first
@@ -469,6 +481,20 @@ final class AppState: ObservableObject {
             installMessage = "Exported explanation to \(url.lastPathComponent)."
         } catch {
             installMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    func showSessionPivot(_ session: ProvenanceSession) {
+        selectedSessionPivot = session
+    }
+
+    func exportAgentTrace() {
+        guard let repository else { return }
+        do {
+            let url = try ProvenanceStore(repoRoot: repository.root).exportAgentTrace()
+            installMessage = "Exported Agent Trace records to \(url.path)."
+        } catch {
+            installMessage = "Agent Trace export failed: \(error.localizedDescription)"
         }
     }
 
