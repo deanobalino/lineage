@@ -120,17 +120,20 @@ public struct ProvenanceNode: Codable, Identifiable, Hashable {
     }
 
     public var stableSortKey: String {
-        [
+        let start = startLine.map { String($0) } ?? ""
+        let end = endLine.map { String($0) } ?? ""
+        let parts: [String] = [
             kind.rawValue,
             repoRoot ?? "",
             commitSHA ?? "",
             filePath ?? "",
-            startLine.map(String.init) ?? "",
-            endLine.map(String.init) ?? "",
+            start,
+            end,
             sessionID ?? "",
             turnID ?? "",
             id
-        ].joined(separator: "|")
+        ]
+        return parts.joined(separator: "|")
     }
 }
 

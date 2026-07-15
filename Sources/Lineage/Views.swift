@@ -1161,8 +1161,19 @@ struct FileTreeRow: View {
     }
 
     private var hasProviderProvenance: Bool {
-        guard !node.isDirectory else { return false }
+        if node.isDirectory {
+            return node.children.contains { child in
+                childHasProviderProvenance(child)
+            }
+        }
         return !(node.file?.provenanceProviders.isEmpty ?? true)
+    }
+
+    private func childHasProviderProvenance(_ child: FileTreeNode) -> Bool {
+        if child.isDirectory {
+            return child.children.contains { childHasProviderProvenance($0) }
+        }
+        return !(child.file?.provenanceProviders.isEmpty ?? true)
     }
 
     private var iconName: String {
@@ -1282,6 +1293,22 @@ struct CodePaneView: View {
                     }
                 }
                 .background(Color.codeBackground)
+                .onChange(of: state.pendingCodeScrollLine) { lineNumber in
+                    guard let lineNumber,
+                          let line = state.codeLines.first(where: { $0.number == lineNumber }) else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        proxy.scrollTo(line.id, anchor: .center)
+                    }
+                    state.pendingCodeScrollLine = nil
+                }
+                .onChange(of: state.codeLines) { _ in
+                    guard let lineNumber = state.pendingCodeScrollLine,
+                          let line = state.codeLines.first(where: { $0.number == lineNumber }) else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        proxy.scrollTo(line.id, anchor: .center)
+                    }
+                    state.pendingCodeScrollLine = nil
+                }
             }
         }
     }
@@ -1355,6 +1382,13 @@ struct ReviewDiffPaneView: View {
                         }
                     }
                     .background(Color.codeBackground)
+                    .onChange(of: state.pendingReviewScrollLineID) { lineID in
+                        guard let lineID else { return }
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            proxy.scrollTo(lineID, anchor: .center)
+                        }
+                        state.pendingReviewScrollLineID = nil
+                    }
                 }
             } else {
                 VStack(spacing: 10) {
@@ -1411,10 +1445,10 @@ struct ProvenancePreviewRail: View {
                     Button {
                         onSelect(marker.id)
                     } label: {
-                        RoundedRectangle(cornerRadius: 2)
+                        Capsule()
                             .fill(marker.id == selectedID ? Color.accentColor : Color.green)
-                            .frame(width: marker.id == selectedID ? 12 : 8, height: marker.id == selectedID ? 8 : 5)
-                            .shadow(color: Color.green.opacity(marker.id == selectedID ? 0.35 : 0), radius: 3)
+                            .frame(width: marker.id == selectedID ? 15 : 11, height: marker.id == selectedID ? 9 : 7)
+                            .shadow(color: Color.green.opacity(marker.id == selectedID ? 0.45 : 0.24), radius: marker.id == selectedID ? 5 : 3)
                     }
                     .buttonStyle(.plain)
                     .position(
@@ -1601,97 +1635,21 @@ struct ReviewExplanationPaneView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text(state.selectedReviewDiffLine == nil ? "Why did this change happen?" : "Why does this line exist?")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Button(action: state.loadReviewSnapshot) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .help("Refresh branch review")
+        VStack(spacing: 0) {
+            RightPaneHeader(title: state.selectedReviewDiffLine == nil ? "Why did this change happen?" : "Why does this line exist?") {
+                Button(action: state.loadReviewSnapshot) {
+                    Image(systemName: "arrow.clockwise")
                 }
-
-                if let snapshot = state.reviewSnapshot {
-                    SectionBlock("Review scope") {
-                        Detail("Base", snapshot.baseBranch)
-                        Detail("Head", snapshot.headBranch)
-                        Detail("Merge base", snapshot.mergeBase.isEmpty ? "Unknown" : snapshot.mergeBase)
-                        Text("Local branch review approximates MR review from Git state. No remote PR/MR metadata is used yet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                if state.isExplainingReviewLine {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Gathering line provenance and Git evidence...")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 20)
-                } else if let explanation = state.reviewLineExplanation, let line = state.selectedReviewDiffLine {
-                    SectionBlock("Selected diff line") {
-                        Detail("File", explanation.selectedFile)
-                        Detail("Line", "\(explanation.selectedLine)")
-                        Detail("Side", line.kind == "deletion" ? "Base / removed line" : "Head / current line")
-                        Detail("Code", explanation.selectedCode)
-                        Detail("Branch", line.kind == "deletion" ? state.reviewBaseBranch : (state.repository?.branch ?? "Unknown"))
-                        Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
-                    }
-                    SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
-                    SectionBlock("Answer") {
-                        Text(explanation.answer)
-                            .font(.body.weight(.medium))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    ProviderProvenanceView(session: explanation.providerSession)
-                    DecisionProvenanceView(provenance: explanation.decisionProvenance)
-                    if let architectureDecision = explanation.architectureDecision {
-                        ArchitectureDecisionView(decision: architectureDecision)
-                    }
-                    ConfidenceView(explanation: explanation)
-                    TimelineView(items: explanation.timeline)
-                    GitEvidenceView(evidence: explanation.gitEvidence)
-                    EvidenceView(cards: explanation.evidence)
-                } else if state.isLoadingReview && state.reviewExplanation == nil {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Gathering change evidence...")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 20)
-                } else if let explanation = state.reviewExplanation {
-                    SourceBadge(providerName: explanation.providerSessions.first?.providerDisplayName)
-                    SectionBlock("Answer") {
-                        Text(explanation.answer)
-                            .font(.body.weight(.medium))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    SectionBlock("Confidence") {
-                        HStack {
-                            Pill(explanation.confidenceLabel, color: explanation.providerSessions.isEmpty ? .orange : .green)
-                            Pill(explanation.gitSummary, color: .blue)
-                        }
-                    }
-                    if !explanation.providerSessions.isEmpty {
-                        SectionBlock("Linked provider sessions") {
-                            ForEach(explanation.providerSessions) { session in
-                                LinkedSessionRow(session: session)
-                            }
-                        }
-                    }
-                    EvidenceView(cards: explanation.evidence)
-                } else {
-                    Text("Select a changed file to inspect why it changed.")
-                        .foregroundStyle(.secondary)
-                }
+                .help("Refresh branch review")
+                RightPaneDisclosureControls()
             }
-            .padding(22)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ReviewExplanationContent()
+                }
+                .padding(22)
+            }
         }
         .background(Color.panel.opacity(0.55))
     }
@@ -1701,63 +1659,185 @@ struct ExplanationPaneView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("Why does this line exist?")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Button(action: state.refreshRepository) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .help("Refresh Git and Lineage provenance")
-                    Button(action: state.exportExplanation) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .help("Export Explanation")
-                    .disabled(state.explanation == nil)
+        VStack(spacing: 0) {
+            RightPaneHeader(title: "Why does this line exist?") {
+                Button(action: state.refreshRepository) {
+                    Image(systemName: "arrow.clockwise")
                 }
-                if state.isExplaining {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Gathering AI provenance and Git evidence...")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 20)
-                } else if let explanation = state.explanation {
-                    SectionBlock("Selected line") {
-                        Detail("File", explanation.selectedFile)
-                        Detail("Line", "\(explanation.selectedLine)")
-                        Detail("Code", explanation.selectedCode)
-                        Detail("Branch", state.repository?.branch ?? "Unknown")
-                        Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
-                    }
-                    SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
-                    SectionBlock("Answer") {
-                        Text(explanation.answer)
-                            .font(.body.weight(.medium))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    ProviderProvenanceView(session: explanation.providerSession)
-                    DecisionProvenanceView(provenance: explanation.decisionProvenance)
-                    if let architectureDecision = explanation.architectureDecision {
-                        ArchitectureDecisionView(decision: architectureDecision)
-                    }
-                    ConfidenceView(explanation: explanation)
-                    TimelineView(items: explanation.timeline)
-                    GitEvidenceView(evidence: explanation.gitEvidence)
-                    EvidenceView(cards: explanation.evidence)
-                    RemovalView(assessment: explanation.couldRemove)
-                    FollowUpView(explanation: explanation)
-                } else {
-                    Text("Select a line to inspect its provenance.")
-                        .foregroundStyle(.secondary)
+                .help("Refresh Git and Lineage provenance")
+                Button(action: state.exportExplanation) {
+                    Image(systemName: "square.and.arrow.up")
                 }
+                .help("Export Explanation")
+                .disabled(state.explanation == nil)
+                RightPaneDisclosureControls()
             }
-            .padding(22)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ExplanationContent()
+                }
+                .padding(22)
+            }
         }
         .background(Color.panel.opacity(0.55))
+    }
+}
+
+struct RightPaneHeader<Actions: View>: View {
+    var title: String
+    @ViewBuilder var actions: Actions
+
+    init(title: String, @ViewBuilder actions: () -> Actions) {
+        self.title = title
+        self.actions = actions()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.title2.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            actions
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .background(Color.panel.opacity(0.96))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+        }
+    }
+}
+
+struct ReviewExplanationContent: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        if let snapshot = state.reviewSnapshot {
+            SectionBlock("Review scope") {
+                Detail("Base", snapshot.baseBranch)
+                Detail("Head", snapshot.headBranch)
+                Detail("Merge base", snapshot.mergeBase.isEmpty ? "Unknown" : snapshot.mergeBase)
+                Text("Local branch review approximates MR review from Git state. No remote PR/MR metadata is used yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
+        if state.isExplainingReviewLine {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Gathering line provenance and Git evidence...")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 20)
+        } else if let explanation = state.reviewLineExplanation, let line = state.selectedReviewDiffLine {
+            SectionBlock("Selected diff line") {
+                Detail("File", explanation.selectedFile)
+                Detail("Line", "\(explanation.selectedLine)")
+                Detail("Side", line.kind == "deletion" ? "Base / removed line" : "Head / current line")
+                Detail("Code", explanation.selectedCode)
+                Detail("Branch", line.kind == "deletion" ? state.reviewBaseBranch : (state.repository?.branch ?? "Unknown"))
+                Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
+            }
+            SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
+            SectionBlock("Answer") {
+                Text(explanation.answer)
+                    .font(.body.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ProviderProvenanceView(session: explanation.providerSession)
+            DecisionProvenanceView(provenance: explanation.decisionProvenance)
+            if let architectureDecision = explanation.architectureDecision {
+                ArchitectureDecisionView(decision: architectureDecision)
+            }
+            ConfidenceView(explanation: explanation)
+            TimelineView(items: explanation.timeline)
+            GitEvidenceView(evidence: explanation.gitEvidence)
+            EvidenceView(cards: explanation.evidence)
+        } else if state.isLoadingReview && state.reviewExplanation == nil {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Gathering change evidence...")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 20)
+        } else if let explanation = state.reviewExplanation {
+            SourceBadge(providerName: explanation.providerSessions.first?.providerDisplayName)
+            SectionBlock("Answer") {
+                Text(explanation.answer)
+                    .font(.body.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            SectionBlock("Confidence") {
+                HStack {
+                    Pill(explanation.confidenceLabel, color: explanation.providerSessions.isEmpty ? .orange : .green)
+                    Pill(explanation.gitSummary, color: .blue)
+                }
+            }
+            if !explanation.providerSessions.isEmpty {
+                SectionBlock("Linked provider sessions") {
+                    ForEach(explanation.providerSessions) { session in
+                        LinkedSessionRow(session: session)
+                    }
+                }
+            }
+            EvidenceView(cards: explanation.evidence)
+        } else {
+            Text("Select a changed file to inspect why it changed.")
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct ExplanationContent: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        if state.isExplaining {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Gathering AI provenance and Git evidence...")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 20)
+        } else if let explanation = state.explanation {
+            SectionBlock("Selected line") {
+                Detail("File", explanation.selectedFile)
+                Detail("Line", "\(explanation.selectedLine)")
+                Detail("Code", explanation.selectedCode)
+                Detail("Branch", state.repository?.branch ?? "Unknown")
+                Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
+            }
+            SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
+            SectionBlock("Answer") {
+                Text(explanation.answer)
+                    .font(.body.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ProviderProvenanceView(session: explanation.providerSession)
+            DecisionProvenanceView(provenance: explanation.decisionProvenance)
+            if let architectureDecision = explanation.architectureDecision {
+                ArchitectureDecisionView(decision: architectureDecision)
+            }
+            ConfidenceView(explanation: explanation)
+            TimelineView(items: explanation.timeline)
+            GitEvidenceView(evidence: explanation.gitEvidence)
+            EvidenceView(cards: explanation.evidence)
+            RemovalView(assessment: explanation.couldRemove)
+            FollowUpView(explanation: explanation)
+        } else {
+            Text("Select a line to inspect its provenance.")
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -1901,6 +1981,7 @@ struct SessionEvidenceView: View {
     @State private var showAllCommands = false
     @State private var transcriptExpanded = false
     @State private var showFullTranscript = false
+    @State private var showTranscriptToolEvents = false
 
     var body: some View {
         let evidence = bundle ?? SessionEvidenceLoader().load(session: session)
@@ -1971,7 +2052,8 @@ struct SessionEvidenceView: View {
             SessionTranscriptPanel(
                 evidence: evidence,
                 isExpanded: $transcriptExpanded,
-                showFullTranscript: $showFullTranscript
+                showFullTranscript: $showFullTranscript,
+                showToolEvents: $showTranscriptToolEvents
             )
 
             DisclosureGroup("Git diff") {
@@ -2009,6 +2091,7 @@ struct SessionEvidenceView: View {
 }
 
 struct SessionTouchedRangesView: View {
+    @EnvironmentObject private var state: AppState
     var ranges: [LineRange]
 
     private var groupedRanges: [(String, [LineRange])] {
@@ -2039,14 +2122,19 @@ struct SessionTouchedRangesView: View {
                             .truncationMode(.middle)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], alignment: .leading, spacing: 6) {
                             ForEach(fileRanges) { range in
-                                Text("\(range.start)-\(range.end)")
-                                    .font(.caption2.monospacedDigit().weight(.semibold))
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.14))
-                                    .foregroundStyle(Color.green)
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                    .help("\(Int(range.confidence * 100))% \(range.label)")
+                                Button {
+                                    state.jumpToRange(range)
+                                } label: {
+                                    Text("\(range.start)-\(range.end)")
+                                        .font(.caption2.monospacedDigit().weight(.semibold))
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.14))
+                                        .foregroundStyle(Color.green)
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Jump to \(file):\(range.start) - \(Int(range.confidence * 100))% \(range.label)")
                             }
                         }
                     }
@@ -2188,9 +2276,18 @@ struct SessionTranscriptPanel: View {
     var evidence: SessionEvidenceBundle
     @Binding var isExpanded: Bool
     @Binding var showFullTranscript: Bool
+    @Binding var showToolEvents: Bool
 
     private var visibleMessages: [SessionTranscriptMessage] {
-        showFullTranscript ? evidence.messages : Array(evidence.messages.prefix(12))
+        showFullTranscript ? filteredMessages : Array(filteredMessages.prefix(12))
+    }
+
+    private var filteredMessages: [SessionTranscriptMessage] {
+        showToolEvents ? evidence.messages : evidence.messages.filter { $0.role != "tool" }
+    }
+
+    private var hiddenToolCount: Int {
+        evidence.messages.filter { $0.role == "tool" }.count
     }
 
     var body: some View {
@@ -2205,6 +2302,15 @@ struct SessionTranscriptPanel: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
+                Button {
+                    showToolEvents.toggle()
+                } label: {
+                    Label(showToolEvents ? "Tools On" : "Tools Off", systemImage: showToolEvents ? "wrench.and.screwdriver.fill" : "wrench.and.screwdriver")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help(showToolEvents ? "Hide transcript tool calls and results" : "Show transcript tool calls and results")
                 Button {
                     withAnimation(.easeInOut(duration: 0.16)) {
                         isExpanded.toggle()
@@ -2231,7 +2337,7 @@ struct SessionTranscriptPanel: View {
     @ViewBuilder
     private var transcriptBody: some View {
         if evidence.transcriptAvailable {
-            if evidence.messages.isEmpty {
+            if filteredMessages.isEmpty {
                 Text("Transcript file was found, but no displayable provider messages or tool events were parsed.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -2241,22 +2347,22 @@ struct SessionTranscriptPanel: View {
                         if index > 0 && index % 8 == 0 {
                             TranscriptCollapseBar(
                                 shownCount: index,
-                                totalCount: evidence.messages.count,
+                                totalCount: filteredMessages.count,
                                 collapse: collapseTranscript
                             )
                         }
                         TranscriptBubble(message: message)
                     }
-                    if evidence.messages.count > visibleMessages.count {
-                        Button("Show all \(evidence.messages.count) transcript events") {
+                    if filteredMessages.count > visibleMessages.count {
+                        Button("Show all \(filteredMessages.count) visible transcript events") {
                             showFullTranscript = true
                         }
                         .buttonStyle(.link)
                     }
-                    if evidence.messages.count > 8 {
+                    if filteredMessages.count > 8 {
                         TranscriptCollapseBar(
                             shownCount: visibleMessages.count,
-                            totalCount: evidence.messages.count,
+                            totalCount: filteredMessages.count,
                             collapse: collapseTranscript
                         )
                     }
@@ -2273,7 +2379,10 @@ struct SessionTranscriptPanel: View {
         if !evidence.transcriptAvailable { return "Unavailable locally" }
         if evidence.messages.isEmpty { return "No displayable messages parsed" }
         let tools = evidence.messages.filter { $0.role == "tool" }.count
-        return "\(evidence.messages.count) events, \(tools) tool events"
+        if showToolEvents {
+            return "\(evidence.messages.count) events, \(tools) tool events shown"
+        }
+        return "\(filteredMessages.count) visible events, \(hiddenToolCount) tool events hidden"
     }
 
     private func collapseTranscript() {
@@ -2640,8 +2749,10 @@ struct FollowUpView: View {
 }
 
 struct SectionBlock<Content: View>: View {
+    @EnvironmentObject private var state: AppState
     var title: String
     @ViewBuilder var content: Content
+    @State private var isExpanded = true
 
     init(_ title: String, @ViewBuilder content: () -> Content) {
         self.title = title
@@ -2650,13 +2761,68 @@ struct SectionBlock<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            content
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Spacer(minLength: 0)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Color.white.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 7)
+                .background(Color.black.opacity(0.16))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Collapse section" : "Expand section")
+
+            if isExpanded {
+                content
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: state.rightPaneCollapseGeneration) { _ in
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isExpanded = false
+            }
+        }
+        .onChange(of: state.rightPaneExpandGeneration) { _ in
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isExpanded = true
+            }
+        }
+    }
+}
+
+struct RightPaneDisclosureControls: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: state.collapseRightPaneSections) {
+                Image(systemName: "rectangle.compress.vertical")
+            }
+            .buttonStyle(IconButtonStyle())
+            .help("Collapse all sections")
+            Button(action: state.expandRightPaneSections) {
+                Image(systemName: "rectangle.expand.vertical")
+            }
+            .buttonStyle(IconButtonStyle())
+            .help("Expand all sections")
+        }
     }
 }
 

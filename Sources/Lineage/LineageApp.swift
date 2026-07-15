@@ -110,6 +110,10 @@ final class AppState: ObservableObject {
     @Published var isExplainingReviewLine = false
     @Published var selectedSessionPivot: ProvenanceSession?
     @Published var provenanceGraph: ProvenanceGraph?
+    @Published var pendingCodeScrollLine: Int?
+    @Published var pendingReviewScrollLineID: String?
+    @Published var rightPaneCollapseGeneration = 0
+    @Published var rightPaneExpandGeneration = 0
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 340
     @AppStorage("rightPaneWidth") var rightPaneWidth: Double = 430
     @AppStorage("projectPaneCollapsed") var projectPaneCollapsed = false
@@ -219,6 +223,8 @@ final class AppState: ObservableObject {
         isExplainingReviewLine = false
         selectedSessionPivot = nil
         provenanceGraph = nil
+        pendingCodeScrollLine = nil
+        pendingReviewScrollLineID = nil
         if clearActiveProject {
             activeProjectPath = nil
             UserDefaults.standard.removeObject(forKey: activeProjectDefaultsKey)
@@ -259,6 +265,38 @@ final class AppState: ObservableObject {
     func select(file: RepoFile) {
         selectedFile = file
         loadSelectedFile(preselectDemoLine: false)
+    }
+
+    func jumpToRange(_ range: LineRange) {
+        guard let repository else { return }
+        if workspaceMode == "review", let reviewFile = reviewSnapshot?.changedFiles.first(where: { $0.path == range.file || $0.oldPath == range.file }) {
+            if selectedReviewFile?.path == reviewFile.path {
+                jumpToReviewLine(range.start)
+            } else {
+                pendingReviewScrollLineID = nil
+                selectReviewFile(reviewFile, focusLine: range.start)
+            }
+            return
+        }
+
+        workspaceMode = "explore"
+        pendingCodeScrollLine = range.start
+        if selectedFile?.path == range.file {
+            if let line = codeLines.first(where: { $0.number == range.start }) {
+                select(line: line)
+            }
+        } else if let file = repository.files.first(where: { $0.path == range.file }) {
+            selectedFile = file
+            loadSelectedFile(preselectDemoLine: false)
+        }
+    }
+
+    func collapseRightPaneSections() {
+        rightPaneCollapseGeneration += 1
+    }
+
+    func expandRightPaneSections() {
+        rightPaneExpandGeneration += 1
     }
 
     func switchBranch(to branch: String) {
@@ -395,7 +433,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func selectReviewFile(_ file: ReviewChangedFile) {
+    func selectReviewFile(_ file: ReviewChangedFile, focusLine: Int? = nil) {
         guard let repository else { return }
         selectedReviewFile = file
         selectedFileDiff = nil
@@ -413,7 +451,24 @@ final class AppState: ObservableObject {
                 self.selectedFileDiff = diff
                 self.reviewExplanation = explanation
                 self.isLoadingReview = false
+                if let focusLine {
+                    self.jumpToReviewLine(focusLine)
+                }
             }
+        }
+    }
+
+    func jumpToReviewLine(_ lineNumber: Int) {
+        guard let diff = selectedFileDiff else {
+            pendingReviewScrollLineID = nil
+            return
+        }
+        let line = diff.lines.first { candidate in
+            candidate.newLine == lineNumber || candidate.oldLine == lineNumber
+        }
+        if let line {
+            pendingReviewScrollLineID = line.id
+            selectReviewLine(line)
         }
     }
 
@@ -536,7 +591,10 @@ final class AppState: ObservableObject {
             await MainActor.run {
                 guard self.selectedFile?.path == selectedFile.path else { return }
                 self.codeLines = lines
-                if preselectDemoLine, let line = lines.first(where: { $0.text.contains("MAX_AUTH_RETRIES = 7") }) {
+                if let pending = self.pendingCodeScrollLine,
+                   let line = lines.first(where: { $0.number == pending }) {
+                    self.select(line: line)
+                } else if preselectDemoLine, let line = lines.first(where: { $0.text.contains("MAX_AUTH_RETRIES = 7") }) {
                     self.select(line: line)
                 } else if let first = lines.first {
                     self.select(line: first)
