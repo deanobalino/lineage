@@ -9,27 +9,36 @@ public struct ExplanationEngine {
         let store = ProvenanceStore(repoRoot: repo)
         let blame = git.blame(repo: repo, file: file, line: lineNumber, revision: revision)
         let gitEvidence = parseGitEvidence(blame: blame)
-        let session = store.matchingSession(file: file, line: lineNumber, commitSHA: gitEvidence.commitSHA)
+        let sessions = store.matchingSessions(file: file, line: lineNumber, commitSHA: gitEvidence.commitSHA)
+        let session = sessions.first
         let symbol = symbolCandidate(from: lineText)
         let references = git.references(repo: repo, symbol: symbol)
 
         if let session {
-            let provenanceLabel = label(for: session)
+            let provenanceLabel = sessions.count > 1 ? "Recorded multi-harness provenance" : label(for: session)
             let decision = decisionProvenance(for: session)
             let architectureDecision = architectureDecision(for: session)
-            let answer = answerForSession(session, lineText: lineText)
+            let answer = answerForSessions(sessions, lineText: lineText)
+            let providerNames = Array(Set(sessions.map(\.providerDisplayName))).sorted()
             return LineExplanation(
                 answer: answer,
                 confidence: session.source == "codex-transcript-recovery" ? 0.82 : 0.96,
                 confidenceLabel: provenanceLabel,
-                originActor: session.providerDisplayName,
+                originActor: providerNames.joined(separator: ", "),
                 originReviewer: session.humanReviewer,
                 gitEvidence: gitEvidence,
                 decisionProvenance: decision,
                 architectureDecision: architectureDecision,
                 providerSession: session,
+                providerSessions: sessions,
                 timeline: timeline(for: decision),
-                evidence: evidenceCards(session: session, gitEvidence: gitEvidence, decision: decision),
+                evidence: sessions.enumerated().flatMap { index, matchedSession in
+                    evidenceCards(
+                        session: matchedSession,
+                        gitEvidence: gitEvidence,
+                        decision: index == 0 ? decision : decisionProvenance(for: matchedSession)
+                    )
+                },
                 couldRemove: RemovalAssessment(
                     risk: "Medium",
                     referencesCount: max(references, 1),
@@ -60,6 +69,7 @@ public struct ExplanationEngine {
             decisionProvenance: decision,
             architectureDecision: gitOnlyArchitectureDecision(gitEvidence: gitEvidence),
             providerSession: nil,
+            providerSessions: [],
             timeline: ["Git blame", "Commit diff", "Line selected today"],
             evidence: [
                 EvidenceCard(id: "commit", title: "Git commit", kind: "Linked Git commit", body: gitEvidenceSummary(gitEvidence)),
@@ -154,24 +164,24 @@ public struct ExplanationEngine {
 
     private func evidenceCards(session: ProvenanceSession, gitEvidence: GitLineEvidence, decision: DecisionProvenance) -> [EvidenceCard] {
         var cards = [
-            EvidenceCard(id: "prompt", title: "Original prompt", kind: "\(session.providerDisplayName) event", body: session.prompt),
-            EvidenceCard(id: "decision", title: "Decision provenance", kind: decision.label, body: "\(decision.detail)\n\nEvidence: \(decision.evidence.joined(separator: ", "))")
+            EvidenceCard(id: "\(session.id)-prompt", title: "Original prompt", kind: "\(session.providerDisplayName) event", body: session.prompt),
+            EvidenceCard(id: "\(session.id)-decision", title: "Decision provenance", kind: decision.label, body: "\(decision.detail)\n\nEvidence: \(decision.evidence.joined(separator: ", "))")
         ]
         cards.append(contentsOf: session.externalConstraints.map { constraint in
             EvidenceCard(
-                id: "constraint-\(constraint.id)",
+                id: "\(session.id)-constraint-\(constraint.id)",
                 title: "External constraint",
                 kind: constraint.source,
                 body: "\(constraint.locationLabel)\n\(constraint.summary)\n\(constraint.excerpt ?? "")"
             )
         })
         cards.append(contentsOf: [
-            EvidenceCard(id: "tools", title: "Tools used", kind: "Tool call", body: session.toolsUsed.joined(separator: ", ")),
-            EvidenceCard(id: "tests", title: "Tests run", kind: "Test result", body: "\(session.testsRun.joined(separator: "\n"))\nResult: \(session.testsResult)"),
-            EvidenceCard(id: "final", title: "Final provider message", kind: "\(session.providerDisplayName) final message", body: session.lastAssistantMessage),
-            EvidenceCard(id: "diff", title: "Git diff snippet", kind: "Git diff snippet", body: session.gitDiff),
-            EvidenceCard(id: "commit", title: "Git commit", kind: "Linked Git commit", body: gitEvidenceSummary(gitEvidence)),
-            EvidenceCard(id: "blame", title: "Raw Git blame", kind: "Git blame", body: gitEvidence.rawBlame)
+            EvidenceCard(id: "\(session.id)-tools", title: "Tools used", kind: "Tool call", body: session.toolsUsed.joined(separator: ", ")),
+            EvidenceCard(id: "\(session.id)-tests", title: "Tests run", kind: "Test result", body: "\(session.testsRun.joined(separator: "\n"))\nResult: \(session.testsResult)"),
+            EvidenceCard(id: "\(session.id)-final", title: "Final provider message", kind: "\(session.providerDisplayName) final message", body: session.lastAssistantMessage),
+            EvidenceCard(id: "\(session.id)-diff", title: "Git diff snippet", kind: "Git diff snippet", body: session.gitDiff),
+            EvidenceCard(id: "\(session.id)-commit", title: "Git commit", kind: "Linked Git commit", body: gitEvidenceSummary(gitEvidence)),
+            EvidenceCard(id: "\(session.id)-blame", title: "Raw Git blame", kind: "Git blame", body: gitEvidence.rawBlame)
         ])
         return cards
     }
@@ -219,6 +229,14 @@ public struct ExplanationEngine {
         let commit = session.commitMessage.map { " It was later linked to the Git commit \"\($0)\"." } ?? ""
         let code = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
         return "This line is linked to recorded \(session.providerDisplayName) provenance from \(prompt). Lineage can show the prompt, tools, tests, permission events, diff evidence, and Git commit that carried `\(code)` into the repository.\(commit)"
+    }
+
+    private func answerForSessions(_ sessions: [ProvenanceSession], lineText: String) -> String {
+        guard let primary = sessions.first else { return "" }
+        let primaryAnswer = answerForSession(primary, lineText: lineText)
+        let additionalProviders = Array(Set(sessions.dropFirst().map(\.providerDisplayName))).sorted()
+        guard !additionalProviders.isEmpty else { return primaryAnswer }
+        return "\(primaryAnswer) Additional matching provenance from \(additionalProviders.joined(separator: ", ")) is included below."
     }
 
     private func decisionProvenance(for session: ProvenanceSession) -> DecisionProvenance {

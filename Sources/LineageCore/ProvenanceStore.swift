@@ -79,17 +79,22 @@ public struct ProvenanceStore {
     }
 
     public func matchingSession(file: String, line: Int, commitSHA: String? = nil) -> ProvenanceSession? {
+        matchingSessions(file: file, line: line, commitSHA: commitSHA).first
+    }
+
+    public func matchingSessions(file: String, line: Int, commitSHA: String? = nil) -> [ProvenanceSession] {
         let allSessions = sessions()
-        if let direct = allSessions.first(where: { session in
+        let direct = allSessions.filter { session in
             session.lineRanges.contains { $0.contains(file: file, line: line) }
-        }) {
+        }
+        if !direct.isEmpty {
             return direct
         }
 
         guard let commitSHA, !commitSHA.isEmpty, commitSHA != "Unknown" else {
-            return nil
+            return []
         }
-        return allSessions.first { session in
+        return allSessions.filter { session in
             guard let sessionCommit = session.commitSHA, commitsMatch(sessionCommit, commitSHA) else { return false }
             return session.filesEdited.contains(file) || session.lineRanges.contains { $0.file == file }
         }
@@ -114,7 +119,10 @@ public struct ProvenanceStore {
         let edited = Set(sessions.flatMap(\.filesEdited)).count
         let explainedFiles = Set(sessions.flatMap { $0.lineRanges.map(\.file) })
         let explainedPercent = files.isEmpty ? 0 : min(100, Int((Double(explainedFiles.count) / Double(max(files.count, 1))) * 100.0))
-        let configured = FileManager.default.fileExists(atPath: repoRoot.appendingPathComponent(".codex/config.toml").path)
+        let configuredHarnesses = CodingHarnessPluginRegistry.shared
+            .configuredDescriptors(repoRoot: repoRoot)
+            .map(\.displayName)
+        let configured = !configuredHarnesses.isEmpty
         let providers = Array(Set(sessions.map(\.providerDisplayName) + events.map { AIProvider.displayName(for: $0.provider) })).sorted()
         return ProvenanceSummary(
             configured: configured,
@@ -125,7 +133,8 @@ public struct ProvenanceStore {
             explainedPercent: explainedPercent,
             eventsCaptured: events.count,
             lastSession: sessions.last?.sessionID ?? "None",
-            lastEvent: events.last?.providerEventName ?? "None"
+            lastEvent: events.last?.providerEventName ?? "None",
+            configuredHarnesses: configuredHarnesses
         )
     }
 }

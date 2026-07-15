@@ -4,7 +4,7 @@
 
 Git blame tells you who. Lineage tells you why.
 
-Lineage is a local-first macOS app for AI coding provenance. Codex is the first supported capture provider, and the app is structured so future adapters can support Claude Code, GitHub Copilot, Cursor, and other coding agents. Lineage captures provider evidence, links it to Git commits and line ranges, and lets an engineer ask: "Why does this line of code exist?"
+Lineage is a local-first macOS app for AI coding provenance. Codex and GitHub Copilot CLI are supported coding harnesses. Harness support is plugin-based so Claude Code, Cursor, and other coding agents can be added without creating a second provenance pipeline. Lineage captures provider evidence, links it to Git commits and line ranges, and lets an engineer ask: "Why does this line of code exist?"
 
 Lineage does not claim to capture private model reasoning. It records prompts, tool calls/results, permission or approval events when providers expose them, diffs, tests, final assistant messages, and Git evidence.
 
@@ -102,9 +102,11 @@ External constraints can be captured as provider-agnostic evidence with:
 
 The right pane renders this as an ADR-like decision record: context, decision, alternatives considered, external constraints, evidence, and consequences/risk when available.
 
-## Codex hook config
+## Coding harness capture
 
-Use **Install Codex Capture** in the app to create:
+The coding-harness controls in the bottom-right of the repository window install either or both capture plugins. Configurations coexist, so different engineers—or different sessions in the same codebase—can use Codex, Copilot CLI, or both while events remain attributed to the correct harness.
+
+**Codex** creates:
 
 ```text
 .lineage/provenance/
@@ -122,13 +124,23 @@ The generated config follows the requested Codex hook shape for:
 
 If the hook schema changes in Codex, keep the same command target and update the TOML matcher shape in `Sources/LineageCore/HookConfig.swift`.
 
+**GitHub Copilot CLI** creates:
+
+```text
+.lineage/provenance/
+.github/hooks/lineage-copilot.json
+```
+
+The generated JSON uses Copilot CLI's repository hook format and captures `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Stop`, and `SessionEnd`. Every hook sets `LINEAGE_PROVIDER=github-copilot`, which keeps Copilot events separate from Codex events even when both harnesses operate in the same repository. Copilot CLI reloads hook changes when the CLI starts, so restart it after installing capture. See GitHub's [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
+
 ## Provider adapters
 
 Provider support lives behind `ProvenanceProviderAdapter`.
 
-Current adapter:
+Current harness plugins:
 
-- `CodexProviderAdapter`
+- `CodexHarnessPlugin` / `CodexProviderAdapter`
+- `GitHubCopilotCLIHarnessPlugin` / `GitHubCopilotProviderAdapter`
 
 Adapter responsibilities:
 
@@ -137,7 +149,7 @@ Adapter responsibilities:
 - preserve raw provider evidence in `payload`
 - normalize prompt, tool, command, approval, prompted decision, external constraint, final-message, diff, test, and changed-file fields where the provider supplies them
 
-To add another provider, implement `ProvenanceProviderAdapter`, register it in `ProviderAdapterRegistry`, and add an installer/config flow if that provider has local lifecycle hooks.
+To add another coding harness, implement `CodingHarnessPlugin` and its `ProvenanceProviderAdapter`, then register the plugin in `CodingHarnessPluginRegistry`. The shared installer, configured-harness status, collector routing, session linker, and right-pane evidence UI then use the plugin automatically.
 
 ## Demo your own repository
 
@@ -148,8 +160,8 @@ To add another provider, implement `ProvenanceProviderAdapter`, register it in `
    ```
 
 2. Click **Open Repository** and choose your repo.
-3. Click **Install Codex Capture**. Lineage builds or finds `lineage-capture`, copies it to `~/.lineage/bin/lineage-capture`, creates `.lineage/provenance/`, writes `.codex/config.toml`, and runs a local collector self-check.
-4. Use Codex in that same repo and make a change. If Codex prompts you to trust the hooks, approve them; that means the hooks are trusted, while Lineage's **Capture activity** status confirms whether events have actually been written.
+3. In **Coding harnesses** at the bottom-right, install Codex capture, Copilot CLI capture, or both. Lineage builds or finds `lineage-capture`, copies it to `~/.lineage/bin/lineage-capture`, creates `.lineage/provenance/`, writes each harness's config, and runs a local collector self-check.
+4. Use a configured harness in that repo and make a change. Restart Copilot CLI after installing its hooks. If a harness prompts you to trust hooks, approve them; Lineage's **Capture activity** status confirms whether events have actually been written.
 5. Return to Lineage and click **Refresh**. Lineage reloads Git state, links captured events into `.lineage/provenance/sessions/*.json`, and updates line badges/explanations.
 
 Repository loading, branch switching, refresh, and line explanations run off the main UI thread so large repos should remain responsive.
@@ -181,7 +193,7 @@ No remote MR/PR API integration is used yet. Local branch review approximates MR
 ## Architecture
 
 ```text
-AI coding provider lifecycle hooks
+AI coding harness plugins (Codex, Copilot CLI, ...)
         ↓
 lineage-capture local command
         ↓
@@ -200,6 +212,6 @@ Lineage macOS app
 "Why does this line exist?"
 ```
 
-Captured provider provenance is treated as the source of truth. Git is supporting evidence for commits, blame, diffs, and line mapping. Codex is currently the first supported capture provider.
+Captured provider provenance is treated as the source of truth. Git is supporting evidence for commits, blame, diffs, and line mapping. Harness-specific events share one canonical schema while preserving their native payload and provider identity.
 
 The primary product workflow is code review: understanding why a branch's changes exist before merging. The secondary workflow is incident archaeology: understanding why an existing line remains in the codebase.

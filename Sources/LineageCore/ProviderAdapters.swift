@@ -13,9 +13,9 @@ public protocol ProvenanceProviderAdapter {
 }
 
 public struct ProviderAdapterRegistry {
-    public static let shared = ProviderAdapterRegistry(adapters: [
-        CodexProviderAdapter()
-    ])
+    public static let shared = ProviderAdapterRegistry(
+        adapters: CodingHarnessPluginRegistry.shared.plugins.map(\.adapter)
+    )
 
     private let adapters: [String: ProvenanceProviderAdapter]
 
@@ -28,6 +28,41 @@ public struct ProviderAdapterRegistry {
             return adapter
         }
         return adapters[AIProvider.codex.id] ?? CodexProviderAdapter()
+    }
+}
+
+public struct GitHubCopilotProviderAdapter: ProvenanceProviderAdapter {
+    public let provider = AIProvider.githubCopilot
+
+    public init() {}
+
+    public func canonicalEvent(
+        rawObject: [String: Any],
+        payloadObject: [String: Any],
+        cwd: URL,
+        repoRoot: URL,
+        environment: [String: String],
+        git: GitService
+    ) -> LineageEvent {
+        var event = CodexProviderAdapter().canonicalEvent(
+            rawObject: rawObject,
+            payloadObject: payloadObject,
+            cwd: cwd,
+            repoRoot: repoRoot,
+            environment: environment,
+            git: git
+        )
+        event.provider = provider.id
+        event.actor = provider.displayName
+        if event.providerEventName == "Stop" {
+            // Copilot's Stop alias is an end-of-turn event. SessionEnd is the
+            // lifecycle boundary used to finalise the repository diff.
+            event.eventType = "agent_stop"
+        }
+        if event.sessionID.hasPrefix("codex-") {
+            event.sessionID = "github-copilot-\(Int(Date().timeIntervalSince1970))"
+        }
+        return event
     }
 }
 
@@ -50,8 +85,8 @@ public struct CodexProviderAdapter: ProvenanceProviderAdapter {
             prompt: string(from: payloadObject, keys: ["prompt", "user_prompt"]),
             toolName: string(from: payloadObject, keys: ["tool_name", "toolName", "tool"]),
             toolUseID: string(from: payloadObject, keys: ["tool_use_id", "toolUseID", "id"]),
-            toolInput: jsonObject(from: payloadObject["tool_input"] ?? payloadObject["toolInput"] ?? payloadObject["input"]),
-            toolResponse: jsonObject(from: payloadObject["tool_response"] ?? payloadObject["toolResponse"] ?? payloadObject["response"]),
+            toolInput: jsonObject(from: payloadObject["tool_input"] ?? payloadObject["toolInput"] ?? payloadObject["toolArgs"] ?? payloadObject["input"]),
+            toolResponse: jsonObject(from: payloadObject["tool_response"] ?? payloadObject["toolResponse"] ?? payloadObject["tool_result"] ?? payloadObject["toolResult"] ?? payloadObject["error"] ?? payloadObject["response"]),
             approvalReason: string(from: payloadObject, keys: ["approval_reason", "approvalReason", "reason"]),
             approvalStatus: string(from: payloadObject, keys: ["approval_status", "approvalStatus", "status", "decision"]),
             lastAssistantMessage: string(from: payloadObject, keys: ["last_assistant_message", "lastAssistantMessage", "assistant_message"]),

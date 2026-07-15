@@ -46,6 +46,11 @@ struct LineageApp: App {
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(state.repository == nil)
 
+                Button("Install GitHub Copilot CLI Capture") {
+                    state.installCapture(for: AIProvider.githubCopilot.id)
+                }
+                .disabled(state.repository == nil)
+
                 Button("Export Explanation...") {
                     state.exportExplanation()
                 }
@@ -118,6 +123,10 @@ final class AppState: ObservableObject {
     @AppStorage("rightPaneWidth") var rightPaneWidth: Double = 430
     @AppStorage("projectPaneCollapsed") var projectPaneCollapsed = false
     @Published var expandedDirectories: Set<String> = []
+
+    var codingHarnesses: [CodingHarnessDescriptor] {
+        CodingHarnessPluginRegistry.shared.descriptors
+    }
 
     private let git = GitService()
     private let explanationEngine = ExplanationEngine()
@@ -506,19 +515,37 @@ final class AppState: ObservableObject {
     }
 
     func installCodexCapture() {
-        guard let repository else { return }
-        installMessage = "Installing Codex capture..."
+        installCapture(for: AIProvider.codex.id)
+    }
+
+    func isHarnessConfigured(_ harnessID: String) -> Bool {
+        guard let repository,
+              let plugin = CodingHarnessPluginRegistry.shared.plugin(for: harnessID) else { return false }
+        return plugin.isConfigured(repoRoot: repository.root)
+    }
+
+    func installCapture(for harnessID: String) {
+        guard let repository,
+              let descriptor = CodingHarnessPluginRegistry.shared.plugin(for: harnessID)?.descriptor else { return }
+        installMessage = "Installing \(descriptor.displayName) capture..."
         Task.detached {
             do {
+                guard let plugin = CodingHarnessPluginRegistry.shared.plugin(for: harnessID) else {
+                    throw NSError(
+                        domain: "LineageInstall",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Unknown coding harness: \(harnessID)"]
+                    )
+                }
                 let store = ProvenanceStore(repoRoot: repository.root)
                 try store.ensureDirectories()
-                let configURL = repository.root.appendingPathComponent(".codex/config.toml")
+                let configURL = plugin.configurationURL(repoRoot: repository.root)
                 try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 let command = try Self.installCollectorCommand()
                 let doctorMessage = try Self.checkCollector(command: command, repo: repository.root)
-                try HookConfig.codexConfig(command: command).write(to: configURL, atomically: true, encoding: .utf8)
+                try plugin.hookConfiguration(command: command).write(to: configURL, atomically: true, encoding: .utf8)
                 await MainActor.run {
-                    self.installMessage = "Codex capture installed at \(command). \(doctorMessage) Start a new Codex turn in this repo, then click Refresh."
+                    self.installMessage = "\(descriptor.displayName) capture installed in \(descriptor.configurationRelativePath). \(doctorMessage) Start a new session in this repo, then click Refresh."
                     self.refreshRepository()
                 }
             } catch {

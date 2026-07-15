@@ -112,7 +112,7 @@ public struct AIProvider: Codable, Hashable, Identifiable {
 
     public static let codex = AIProvider(id: "codex", displayName: "Codex")
     public static let claudeCode = AIProvider(id: "claude-code", displayName: "Claude Code")
-    public static let githubCopilot = AIProvider(id: "github-copilot", displayName: "GitHub Copilot")
+    public static let githubCopilot = AIProvider(id: "github-copilot", displayName: "GitHub Copilot CLI")
     public static let cursor = AIProvider(id: "cursor", displayName: "Cursor")
 
     public static func displayName(for id: String) -> String {
@@ -148,13 +148,13 @@ public enum CanonicalEventType {
         case "SessionStart": return sessionStart
         case "UserPromptSubmit": return prompt
         case "PreToolUse": return preToolUse
-        case "PostToolUse": return postToolUse
+        case "PostToolUse", "PostToolUseFailure": return postToolUse
         case "PermissionRequest": return permissionRequest
         case "AssistantOptionsPresented": return assistantOptionsPresented
         case "UserDecision": return userDecision
         case "PermissionDecision": return permissionDecision
         case "ExternalConstraint": return externalConstraint
-        case "Stop": return sessionStop
+        case "Stop", "SessionEnd": return sessionStop
         default: return providerEventName.isEmpty ? unknown : providerEventName
         }
     }
@@ -627,6 +627,7 @@ public struct RepoFile: Identifiable, Hashable {
 
 public struct ProvenanceSummary: Hashable {
     public var configured: Bool
+    public var configuredHarnesses: [String]
     public var providers: [String]
     public var sessionsCaptured: Int
     public var toolCalls: Int
@@ -636,8 +637,9 @@ public struct ProvenanceSummary: Hashable {
     public var lastSession: String
     public var lastEvent: String
 
-    public init(configured: Bool, providers: [String], sessionsCaptured: Int, toolCalls: Int, filesEdited: Int, explainedPercent: Int, eventsCaptured: Int, lastSession: String, lastEvent: String) {
+    public init(configured: Bool, providers: [String], sessionsCaptured: Int, toolCalls: Int, filesEdited: Int, explainedPercent: Int, eventsCaptured: Int, lastSession: String, lastEvent: String, configuredHarnesses: [String] = []) {
         self.configured = configured
+        self.configuredHarnesses = configuredHarnesses
         self.providers = providers
         self.sessionsCaptured = sessionsCaptured
         self.toolCalls = toolCalls
@@ -832,6 +834,7 @@ public struct LineExplanation: Hashable {
     public var decisionProvenance: DecisionProvenance
     public var architectureDecision: ArchitectureDecision?
     public var providerSession: ProvenanceSession?
+    public var providerSessions: [ProvenanceSession]
     public var timeline: [String]
     public var evidence: [EvidenceCard]
     public var couldRemove: RemovalAssessment

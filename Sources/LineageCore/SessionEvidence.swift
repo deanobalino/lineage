@@ -138,8 +138,8 @@ public struct SessionEvidenceLoader {
 
     private func parseLine(_ line: String, fallbackID: String) -> SessionTranscriptMessage? {
         guard let data = line.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let payload = object["payload"] as? [String: Any] else { return nil }
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let payload = object["payload"] as? [String: Any] ?? object
         let timestamp = object["timestamp"] as? String
         let payloadType = payload["type"] as? String
         let id = (payload["id"] as? String) ?? (payload["call_id"] as? String) ?? fallbackID
@@ -148,7 +148,7 @@ public struct SessionEvidenceLoader {
             return SessionTranscriptMessage(id: id, timestamp: timestamp, role: "user", title: "User", body: SecretRedactor.redact(message))
         }
         if payloadType == "agent_message", let message = payload["message"] as? String {
-            return SessionTranscriptMessage(id: id, timestamp: timestamp, role: "assistant", title: "Codex", body: SecretRedactor.redact(message))
+            return SessionTranscriptMessage(id: id, timestamp: timestamp, role: "assistant", title: "Assistant", body: SecretRedactor.redact(message))
         }
         if payloadType == "function_call" || payloadType == "custom_tool_call" {
             let name = payload["name"] as? String ?? "Tool"
@@ -161,6 +161,32 @@ public struct SessionEvidenceLoader {
         }
         if let eventType = payloadType, eventType.localizedCaseInsensitiveContains("permission") || eventType.localizedCaseInsensitiveContains("approval") {
             return SessionTranscriptMessage(id: id, timestamp: timestamp, role: "permission", title: eventType, body: SecretRedactor.redact(String(describing: payload)))
+        }
+
+        let role = (payload["role"] as? String) ?? payloadType
+        let body = (payload["message"] as? String)
+            ?? (payload["content"] as? String)
+            ?? (payload["text"] as? String)
+        if let role, let body, ["user", "assistant", "agent", "system"].contains(role.lowercased()) {
+            let normalizedRole = role.lowercased() == "agent" ? "assistant" : role.lowercased()
+            return SessionTranscriptMessage(
+                id: id,
+                timestamp: timestamp,
+                role: normalizedRole,
+                title: normalizedRole == "user" ? "User" : (normalizedRole == "assistant" ? "Assistant" : "System"),
+                body: SecretRedactor.redact(body)
+            )
+        }
+
+        if let toolName = (payload["toolName"] as? String) ?? (payload["tool_name"] as? String) {
+            let input = payload["toolArgs"] ?? payload["tool_input"] ?? payload["input"] ?? payload["toolResult"] ?? payload["tool_result"]
+            return SessionTranscriptMessage(
+                id: id,
+                timestamp: timestamp,
+                role: "tool",
+                title: toolName,
+                body: SecretRedactor.redact(input.map { String(describing: $0) } ?? "")
+            )
         }
         return nil
     }
