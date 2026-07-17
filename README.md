@@ -104,7 +104,7 @@ The right pane renders this as an ADR-like decision record: context, decision, a
 
 ## Coding harness capture
 
-The coding-harness controls in the bottom-right of the repository window install either or both capture plugins. Configurations coexist, so different engineers—or different sessions in the same codebase—can use Codex, Copilot CLI, or both while events remain attributed to the correct harness.
+The capture controls in the bottom-left sidebar install either or both coding-harness plugins. Configurations coexist, so different engineers—or different sessions in the same codebase—can use Codex, Copilot CLI, or both while events remain attributed to the correct harness.
 
 **Codex** creates:
 
@@ -160,7 +160,7 @@ To add another coding harness, implement `CodingHarnessPlugin` and its `Provenan
    ```
 
 2. Click **Open Repository** and choose your repo.
-3. In **Coding harnesses** at the bottom-right, install Codex capture, Copilot CLI capture, or both. Lineage builds or finds `lineage-capture`, copies it to `~/.lineage/bin/lineage-capture`, creates `.lineage/provenance/`, writes each harness's config, and runs a local collector self-check.
+3. In **Capture setup** at the bottom-left, install Codex capture, Copilot CLI capture, or both. Lineage builds or finds `lineage-capture`, copies it to `~/.lineage/bin/lineage-capture`, creates `.lineage/provenance/`, writes each harness's config, and runs a local collector self-check.
 4. Use a configured harness in that repo and make a change. Restart Copilot CLI after installing its hooks. If a harness prompts you to trust hooks, approve them; Lineage's **Capture activity** status confirms whether events have actually been written.
 5. Return to Lineage and click **Refresh**. Lineage reloads Git state, links captured events into `.lineage/provenance/sessions/*.json`, and updates line badges/explanations.
 
