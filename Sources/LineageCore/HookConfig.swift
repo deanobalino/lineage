@@ -66,4 +66,33 @@ public enum HookConfig {
     statusMessage = "Finalising Lineage provenance"
     """
     }
+
+    public static var githubCopilotCLIConfig: String {
+        githubCopilotCLIConfig(command: "lineage-capture")
+    }
+
+    public static func githubCopilotCLIConfig(command: String) -> String {
+        let hook: [String: Any] = [
+            "type": "command",
+            "command": command,
+            "env": ["LINEAGE_PROVIDER": AIProvider.githubCopilot.id],
+            "timeoutSec": 30
+        ]
+        let hooks: [String: Any] = [
+            "SessionStart": [hook],
+            "UserPromptSubmit": [hook],
+            "PreToolUse": [hook.merging(["matcher": "*"]) { _, new in new }],
+            "PermissionRequest": [hook.merging(["matcher": "*"]) { _, new in new }],
+            "PostToolUse": [hook.merging(["matcher": "*"]) { _, new in new }],
+            "PostToolUseFailure": [hook.merging(["matcher": "*"]) { _, new in new }],
+            "Stop": [hook],
+            "SessionEnd": [hook]
+        ]
+        let object: [String: Any] = ["version": 1, "hooks": hooks]
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
+              let config = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return config + "\n"
+    }
 }

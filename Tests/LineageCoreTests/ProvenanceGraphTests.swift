@@ -85,6 +85,23 @@ final class ProvenanceGraphTests: XCTestCase {
         XCTAssertNil(noMatch)
     }
 
+    func testStoreReturnsAllHarnessSessionsMatchingLine() throws {
+        let repo = try makeFixtureRepo()
+        let store = ProvenanceStore(repoRoot: repo)
+        let codex = makeSession()
+        var copilot = makeSession()
+        copilot.id = "github-copilot-session-2"
+        copilot.provider = AIProvider.githubCopilot.id
+        copilot.providerDisplayName = AIProvider.githubCopilot.displayName
+        copilot.sessionID = "session-2"
+        try store.write(session: codex)
+        try store.write(session: copilot)
+
+        let matches = store.matchingSessions(file: "Sources/App.swift", line: 2)
+
+        XCTAssertEqual(Set(matches.map(\.provider)), Set([AIProvider.codex.id, AIProvider.githubCopilot.id]))
+    }
+
     func testSessionEvidenceGroupsTimelineByEvidenceType() throws {
         let bundle = SessionEvidenceLoader().load(session: makeSession())
         let groups = Dictionary(grouping: bundle.timeline) { $0.group }

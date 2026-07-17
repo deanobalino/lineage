@@ -563,14 +563,17 @@ struct MainLayoutView: View {
             }
                 .frame(minWidth: 420, maxWidth: .infinity)
             PaneResizeHandle(kind: .right)
-            Group {
-                if state.workspaceMode == "review" {
-                    ReviewExplanationPaneView()
-                } else {
-                    ExplanationPaneView()
+            VStack(spacing: 0) {
+                Group {
+                    if state.workspaceMode == "review" {
+                        ReviewExplanationPaneView()
+                    } else {
+                        ExplanationPaneView()
+                    }
                 }
+                HarnessCaptureBar()
             }
-                .frame(width: CGFloat(state.rightPaneWidth))
+            .frame(width: CGFloat(state.rightPaneWidth))
         }
         .background(Color.lineageBackground)
         .sheet(item: $state.selectedSessionPivot) { session in
@@ -724,16 +727,6 @@ struct SidebarView: View {
                 }
             }
 
-            Button(action: state.installCodexCapture) {
-                Label("Install Codex Capture", systemImage: "record.circle")
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            if let message = state.installMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(20)
     }
@@ -745,6 +738,59 @@ struct SidebarView: View {
 
     private var metadataMaxHeight: CGFloat {
         showProvenance || showCaptureStatus ? 260 : 72
+    }
+}
+
+struct HarnessCaptureBar: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("Coding harnesses", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Per repository")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            HStack(spacing: 8) {
+                ForEach(state.codingHarnesses) { harness in
+                    let configured = state.isHarnessConfigured(harness.id)
+                    Button {
+                        state.installCapture(for: harness.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: configured ? "checkmark.circle.fill" : "record.circle")
+                                .foregroundStyle(configured ? Color.green : Color.secondary)
+                            Text(harness.id == AIProvider.githubCopilot.id ? "Copilot CLI" : harness.displayName)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .help(configured ? "Reinstall \(harness.displayName) capture" : harness.installLabel)
+                }
+            }
+
+            if let message = state.installMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.panel.opacity(0.98))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(height: 1)
+        }
     }
 }
 
@@ -1233,13 +1279,13 @@ struct CaptureStatusView: View {
             Text("Capture status")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("Hook config: \(summary.configured ? "installed" : "missing")")
+            Text("Harness hooks: \(summary.configuredHarnesses.isEmpty ? "none installed" : summary.configuredHarnesses.joined(separator: ", "))")
             Text("Capture activity: \(summary.eventsCaptured > 0 ? "seen" : "not seen yet")")
             Text("Events captured: \(summary.eventsCaptured)")
             Text("Last session: \(summary.lastSession)")
             Text("Last provider event: \(summary.lastEvent)")
             if summary.configured && summary.eventsCaptured == 0 {
-                Text("Codex has trusted the hook config, but Lineage has not seen the collector write an event yet. Start a new Codex turn in this repo after installing capture.")
+                Text("Harness hooks are installed, but Lineage has not seen a collector event yet. Restart the configured CLI and begin a new session in this repository.")
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1746,13 +1792,13 @@ struct ReviewExplanationContent: View {
                 Detail("Branch", line.kind == "deletion" ? state.reviewBaseBranch : (state.repository?.branch ?? "Unknown"))
                 Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
             }
-            SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
+            SourceBadge(providerName: providerNames(for: explanation.providerSessions))
             SectionBlock("Answer") {
                 Text(explanation.answer)
                     .font(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ProviderProvenanceView(session: explanation.providerSession)
+            ProviderProvenanceView(sessions: explanation.providerSessions)
             DecisionProvenanceView(provenance: explanation.decisionProvenance)
             if let architectureDecision = explanation.architectureDecision {
                 ArchitectureDecisionView(decision: architectureDecision)
@@ -1817,13 +1863,13 @@ struct ExplanationContent: View {
                 Detail("Branch", state.repository?.branch ?? "Unknown")
                 Detail("Git commit", [explanation.gitEvidence.commitSHA, explanation.gitEvidence.summary].filter { !$0.isEmpty && $0 != "Unknown" }.joined(separator: " - "))
             }
-            SourceBadge(providerName: explanation.providerSession?.providerDisplayName)
+            SourceBadge(providerName: providerNames(for: explanation.providerSessions))
             SectionBlock("Answer") {
                 Text(explanation.answer)
                     .font(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ProviderProvenanceView(session: explanation.providerSession)
+            ProviderProvenanceView(sessions: explanation.providerSessions)
             DecisionProvenanceView(provenance: explanation.decisionProvenance)
             if let architectureDecision = explanation.architectureDecision {
                 ArchitectureDecisionView(decision: architectureDecision)
@@ -1842,18 +1888,29 @@ struct ExplanationContent: View {
 }
 
 struct ProviderProvenanceView: View {
-    var session: ProvenanceSession?
+    var sessions: [ProvenanceSession]
 
     var body: some View {
         SectionBlock("Session evidence") {
-            if let session {
-                SessionEvidenceView(session: session)
-            } else {
+            if sessions.isEmpty {
                 Text("No AI provider provenance found - inferred from Git history")
                     .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                    if index > 0 {
+                        Divider().overlay(Color.white.opacity(0.08))
+                            .padding(.vertical, 4)
+                    }
+                    SessionEvidenceView(session: session)
+                }
             }
         }
     }
+}
+
+private func providerNames(for sessions: [ProvenanceSession]) -> String? {
+    let names = Array(Set(sessions.map(\.providerDisplayName))).sorted()
+    return names.isEmpty ? nil : names.joined(separator: ", ")
 }
 
 struct LinkedSessionRow: View {
