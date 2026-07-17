@@ -72,21 +72,15 @@ public enum HookConfig {
     }
 
     public static func githubCopilotCLIConfig(command: String) -> String {
-        let hook: [String: Any] = [
-            "type": "command",
-            "command": command,
-            "env": ["LINEAGE_PROVIDER": AIProvider.githubCopilot.id],
-            "timeoutSec": 30
-        ]
         let hooks: [String: Any] = [
-            "SessionStart": [hook],
-            "UserPromptSubmit": [hook],
-            "PreToolUse": [hook.merging(["matcher": "*"]) { _, new in new }],
-            "PermissionRequest": [hook.merging(["matcher": "*"]) { _, new in new }],
-            "PostToolUse": [hook.merging(["matcher": "*"]) { _, new in new }],
-            "PostToolUseFailure": [hook.merging(["matcher": "*"]) { _, new in new }],
-            "Stop": [hook],
-            "SessionEnd": [hook]
+            "SessionStart": [githubCopilotHook(command: command, eventName: "SessionStart")],
+            "UserPromptSubmit": [githubCopilotHook(command: command, eventName: "UserPromptSubmit")],
+            "PreToolUse": [githubCopilotHook(command: command, eventName: "PreToolUse", matcher: "*")],
+            "PermissionRequest": [githubCopilotHook(command: command, eventName: "PermissionRequest", matcher: "*")],
+            "PostToolUse": [githubCopilotHook(command: command, eventName: "PostToolUse", matcher: "*")],
+            "PostToolUseFailure": [githubCopilotHook(command: command, eventName: "PostToolUseFailure", matcher: "*")],
+            "Stop": [githubCopilotHook(command: command, eventName: "Stop")],
+            "SessionEnd": [githubCopilotHook(command: command, eventName: "SessionEnd")]
         ]
         let object: [String: Any] = ["version": 1, "hooks": hooks]
         guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
@@ -94,5 +88,21 @@ public enum HookConfig {
             return "{}"
         }
         return config + "\n"
+    }
+
+    private static func githubCopilotHook(command: String, eventName: String, matcher: String? = nil) -> [String: Any] {
+        var hook: [String: Any] = [
+            "type": "command",
+            "command": command,
+            "env": [
+                "LINEAGE_PROVIDER": AIProvider.githubCopilot.id,
+                "LINEAGE_HOOK_EVENT": eventName
+            ],
+            "timeoutSec": 30
+        ]
+        if let matcher {
+            hook["matcher"] = matcher
+        }
+        return hook
     }
 }
