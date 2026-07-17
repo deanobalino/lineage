@@ -563,17 +563,14 @@ struct MainLayoutView: View {
             }
                 .frame(minWidth: 420, maxWidth: .infinity)
             PaneResizeHandle(kind: .right)
-            VStack(spacing: 0) {
-                Group {
-                    if state.workspaceMode == "review" {
-                        ReviewExplanationPaneView()
-                    } else {
-                        ExplanationPaneView()
-                    }
+            Group {
+                if state.workspaceMode == "review" {
+                    ReviewExplanationPaneView()
+                } else {
+                    ExplanationPaneView()
                 }
-                HarnessCaptureBar()
             }
-            .frame(width: CGFloat(state.rightPaneWidth))
+                .frame(width: CGFloat(state.rightPaneWidth))
         }
         .background(Color.lineageBackground)
         .sheet(item: $state.selectedSessionPivot) { session in
@@ -727,6 +724,8 @@ struct SidebarView: View {
                 }
             }
 
+            Divider().overlay(Color.white.opacity(0.08))
+            HarnessCapturePanel()
         }
         .padding(20)
     }
@@ -741,13 +740,13 @@ struct SidebarView: View {
     }
 }
 
-struct HarnessCaptureBar: View {
+struct HarnessCapturePanel: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label("Coding harnesses", systemImage: "point.3.connected.trianglepath.dotted")
+                Label("Capture setup", systemImage: "record.circle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -756,7 +755,7 @@ struct HarnessCaptureBar: View {
                     .foregroundStyle(.tertiary)
             }
 
-            HStack(spacing: 8) {
+            VStack(spacing: 7) {
                 ForEach(state.codingHarnesses) { harness in
                     let configured = state.isHarnessConfigured(harness.id)
                     Button {
@@ -765,9 +764,11 @@ struct HarnessCaptureBar: View {
                         HStack(spacing: 6) {
                             Image(systemName: configured ? "checkmark.circle.fill" : "record.circle")
                                 .foregroundStyle(configured ? Color.green : Color.secondary)
-                            Text(harness.id == AIProvider.githubCopilot.id ? "Copilot CLI" : harness.displayName)
+                            Text(configured ? "\(shortName(for: harness)) Capture Installed" : harness.installLabel)
                                 .lineLimit(1)
+                            Spacer(minLength: 0)
                         }
+                        .padding(.horizontal, 2)
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(SecondaryButtonStyle())
@@ -783,14 +784,10 @@ struct HarnessCaptureBar: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.panel.opacity(0.98))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 1)
-        }
+    }
+
+    private func shortName(for harness: CodingHarnessDescriptor) -> String {
+        harness.id == AIProvider.githubCopilot.id ? "Copilot" : harness.displayName
     }
 }
 
