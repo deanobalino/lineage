@@ -91,7 +91,7 @@ func applyDirtyWorktreeBaseline(to event: inout LineageEvent, store: ProvenanceS
         }
         let currentDiff = event.payload.gitDiff ?? ""
         let currentFiles = event.payload.changedFiles ?? []
-        if currentDiff == baseline.gitDiff {
+        if currentDiff == baseline.gitDiff && Set(currentFiles) == Set(baseline.changedFiles) {
             event.payload.gitDiff = ""
             event.payload.changedFiles = []
         } else if !baseline.changedFiles.isEmpty {

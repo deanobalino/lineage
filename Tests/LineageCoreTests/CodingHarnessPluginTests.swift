@@ -19,12 +19,43 @@ final class CodingHarnessPluginTests: XCTestCase {
         )
         let hooks = try XCTUnwrap(object["hooks"] as? [String: Any])
 
-        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"] {
+        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop", "SessionEnd"] {
             let entries = try XCTUnwrap(hooks[event] as? [[String: Any]])
             let first = try XCTUnwrap(entries.first)
             XCTAssertEqual(first["command"] as? String, "/tmp/lineage capture")
-            XCTAssertEqual((first["env"] as? [String: String])?["LINEAGE_PROVIDER"], AIProvider.githubCopilot.id)
+            let environment = try XCTUnwrap(first["env"] as? [String: String])
+            XCTAssertEqual(environment["LINEAGE_PROVIDER"], AIProvider.githubCopilot.id)
+            XCTAssertEqual(environment["LINEAGE_HOOK_EVENT"], event)
         }
+    }
+
+    func testCopilotAdapterCorrelatesNativeCamelCasePayloadWithoutEventName() throws {
+        let repo = try makeFixtureRepo()
+        let raw: [String: Any] = [
+            "sessionId": "copilot-native-session",
+            "turnId": "turn-7",
+            "cwd": repo.path,
+            "toolName": "edit",
+            "toolArgs": ["file_path": "Sources/App.swift"],
+            "toolResult": ["resultType": "success", "textResultForLlm": "updated"]
+        ]
+
+        let event = GitHubCopilotProviderAdapter().canonicalEvent(
+            rawObject: raw,
+            payloadObject: raw,
+            cwd: repo,
+            repoRoot: repo,
+            environment: ["LINEAGE_HOOK_EVENT": "PostToolUse"],
+            git: GitService()
+        )
+
+        XCTAssertEqual(event.providerEventName, "PostToolUse")
+        XCTAssertEqual(event.eventType, CanonicalEventType.postToolUse)
+        XCTAssertEqual(event.sessionID, "copilot-native-session")
+        XCTAssertEqual(event.turnID, "turn-7")
+        XCTAssertEqual(event.payload.toolName, "edit")
+        XCTAssertEqual(event.payload.toolInput?["file_path"]?.stringValue, "Sources/App.swift")
+        XCTAssertEqual(event.payload.toolResponse?["textResultForLlm"]?.stringValue, "updated")
     }
 
     func testCopilotAdapterKeepsProviderAndNativeEvidence() throws {

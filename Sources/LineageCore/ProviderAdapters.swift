@@ -79,7 +79,9 @@ public struct CodexProviderAdapter: ProvenanceProviderAdapter {
         environment: [String: String],
         git: GitService
     ) -> LineageEvent {
-        let eventName = string(from: rawObject, keys: ["provider_event_name", "hook_event_name", "hookEventName", "event", "name"]) ?? "Unknown"
+        let eventName = string(from: rawObject, keys: ["provider_event_name", "hook_event_name", "hookEventName", "event", "name"])
+            ?? environment["LINEAGE_HOOK_EVENT"]
+            ?? "Unknown"
         let eventType = string(from: rawObject, keys: ["event_type", "eventType"]) ?? CanonicalEventType.from(providerEventName: eventName)
         let payload = EventPayload(
             prompt: string(from: payloadObject, keys: ["prompt", "user_prompt"]),
@@ -113,8 +115,8 @@ public struct CodexProviderAdapter: ProvenanceProviderAdapter {
             actor: provider.displayName,
             human: string(from: rawObject, keys: ["human", "user", "human_reviewer"]),
             hookEventName: eventName,
-            sessionID: string(from: rawObject, keys: ["session_id", "sessionID"]) ?? environment["CODEX_SESSION_ID"] ?? "codex-\(Int(Date().timeIntervalSince1970))",
-            turnID: string(from: rawObject, keys: ["turn_id", "turnID"]) ?? environment["CODEX_TURN_ID"],
+            sessionID: string(from: rawObject, keys: ["session_id", "sessionID", "sessionId"]) ?? environment["CODEX_SESSION_ID"] ?? "codex-\(Int(Date().timeIntervalSince1970))",
+            turnID: string(from: rawObject, keys: ["turn_id", "turnID", "turnId"]) ?? environment["CODEX_TURN_ID"],
             cwd: cwd.path,
             repoRoot: repoRoot.path,
             model: string(from: rawObject, keys: ["model"]) ?? environment["CODEX_MODEL"],
@@ -199,7 +201,13 @@ private func int(from object: [String: Any], keys: [String]) -> Int? {
 }
 
 private func changedFiles(repo: URL, git: GitService) -> [String] {
-    git.run(["diff", "--name-only"], in: repo)
+    let tracked = git.run(["diff", "--name-only"], in: repo)
         .split(separator: "\n")
         .map(String.init)
+    let untracked = git.run(["ls-files", "--others", "--exclude-standard"], in: repo)
+        .split(separator: "\n")
+        .map(String.init)
+    return Array(Set(tracked + untracked))
+        .filter { !$0.hasPrefix(".lineage/") }
+        .sorted()
 }

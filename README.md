@@ -131,7 +131,7 @@ If the hook schema changes in Codex, keep the same command target and update the
 .github/hooks/lineage-copilot.json
 ```
 
-The generated JSON uses Copilot CLI's repository hook format and captures `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Stop`, and `SessionEnd`. Every hook sets `LINEAGE_PROVIDER=github-copilot`, which keeps Copilot events separate from Codex events even when both harnesses operate in the same repository. Copilot CLI reloads hook changes when the CLI starts, so restart it after installing capture. See GitHub's [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
+The generated JSON uses Copilot CLI's repository hook format and captures `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Stop`, and `SessionEnd`. Every hook sets `LINEAGE_PROVIDER=github-copilot` and its own `LINEAGE_HOOK_EVENT`, which keeps Copilot events separate from Codex events and preserves the lifecycle event when Copilot sends a native camelCase payload without an event-name field. Copilot CLI reloads hook changes when the CLI starts, so reinstall capture and restart Copilot CLI after upgrading Lineage. See GitHub's [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
 
 ## Provider adapters
 
