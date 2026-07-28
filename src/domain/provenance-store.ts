@@ -8,6 +8,7 @@ import {
   rm,
   stat
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import {
   decodeLineageEvent,
@@ -48,7 +49,10 @@ async function flushDirectory(path: string): Promise<void> {
 
 export async function atomicWrite(path: string, data: string | Buffer, mode = 0o600): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.tmp`);
+  const temporary = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`
+  );
   const handle = await open(temporary, "wx", mode);
   try {
     await handle.writeFile(data);

@@ -12,7 +12,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { decodeLegacySession } from "../../../src/domain/codec.js";
 import type { ProvenanceSession } from "../../../src/domain/models.js";
-import { ProvenanceStore } from "../../../src/domain/provenance-store.js";
+import {
+  atomicWrite,
+  ProvenanceStore,
+} from "../../../src/domain/provenance-store.js";
 
 const fixtureRoot = fileURLToPath(
   new URL("../../fixtures/compatibility/", import.meta.url),
@@ -112,6 +115,24 @@ describe("ProvenanceStore", () => {
     ]);
     expect(generated).toMatchObject({
       nested: { valid: true },
+    });
+  });
+
+  it("allows concurrent atomic replacements of the same file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lineage-atomic-write-"));
+    temporaryRoots.push(root);
+    const target = join(root, "capture-health.json");
+
+    const writes = await Promise.allSettled(
+      Array.from({ length: 64 }, (_, index) =>
+        atomicWrite(target, `${JSON.stringify({ index })}\n`),
+      ),
+    );
+
+    expect(writes.filter((write) => write.status === "rejected")).toEqual([]);
+
+    expect(JSON.parse(await readFile(target, "utf8"))).toEqual({
+      index: expect.any(Number),
     });
   });
 });
