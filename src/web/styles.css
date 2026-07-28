@@ -898,6 +898,18 @@ select {
   white-space: pre;
 }
 
+.provenance-marker {
+  position: absolute;
+  right: 26px;
+  top: 3px;
+  align-self: center;
+  padding-inline: 8px;
+  background: var(--color-diff-add-bg);
+  color: var(--color-diff-add-ink);
+  font: 10px/20px var(--font-ui);
+  white-space: nowrap;
+}
+
 .diff-line--addition {
   background: var(--color-diff-add-bg);
 }
@@ -1152,11 +1164,20 @@ select {
   grid-template-columns: 300px minmax(520px, 1fr) 420px;
 }
 
-.path-list {
+.path-tree {
+  margin: 0;
+  padding: 0;
   border-top: 1px solid var(--color-edge);
+  list-style: none;
 }
 
-.path-list button {
+.path-tree .path-tree {
+  padding-left: 14px;
+  border-top: 0;
+}
+
+.path-tree summary,
+.path-tree button {
   display: block;
   width: 100%;
   min-height: 36px;
@@ -1171,11 +1192,20 @@ select {
   cursor: pointer;
 }
 
-.path-list button:hover {
+.path-tree summary {
+  padding: 8px 12px;
+  color: var(--color-ink);
+  font: 12px/1.4 var(--font-ui);
+  font-weight: 620;
+  list-style-position: inside;
+}
+
+.path-tree button:hover,
+.path-tree summary:hover {
   background: var(--color-surface);
 }
 
-.path-list button.selected {
+.path-tree button.selected {
   background: var(--color-surface-selected);
   color: var(--color-ink);
 }
@@ -1794,7 +1824,8 @@ select {
   }
 
   .file-rail section > button,
-  .path-list button {
+  .path-tree button,
+  .path-tree summary {
     min-height: 46px;
   }
 

@@ -155,6 +155,12 @@ describe("self-hosted server", () => {
     );
     expect(review.statusCode).toBe(200);
     expect(review.json()).toMatchObject({
+      mergeBase: expect.stringMatching(/^[0-9a-f]{40}$/),
+      commits: [
+        expect.objectContaining({
+          subject: "Change value"
+        })
+      ],
       metrics: {
         commits: 1,
         files: 1,
@@ -318,5 +324,56 @@ describe("self-hosted server", () => {
       payload: { token: newToken }
     })).statusCode).toBe(200);
     await built.app.close();
+  });
+
+  it("throttles repeated login failures, expires sessions, bounds bodies, and emits browser defenses", async () => {
+    const fixture = await temporaryConfig();
+    fixture.config.sessionTtlMs = 2;
+    const built = await buildApp(fixture.config);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const rejected = await built.app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        headers: { host: "localhost" },
+        payload: { token: `invalid-token-${"x".repeat(30)}-${attempt}` }
+      });
+      expect(rejected.statusCode).toBe(401);
+    }
+    const throttled = await built.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      headers: { host: "localhost" },
+      payload: { token: built.bootstrap.operatorToken }
+    });
+    expect(throttled.statusCode).toBe(429);
+
+    const second = await buildApp({
+      ...fixture.config,
+      stateDirectory: join(fixture.root, "second-state")
+    });
+    const auth = await authenticate(second);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const expired = await second.app.inject(
+      authenticated(auth, "GET", "/api/v1/repositories")
+    );
+    expect(expired.statusCode).toBe(401);
+
+    const health = await second.app.inject({
+      method: "GET",
+      url: "/api/v1/health",
+      headers: { host: "localhost" }
+    });
+    expect(health.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(health.headers["x-content-type-options"]).toBe("nosniff");
+    expect(health.headers["x-frame-options"]).toBe("DENY");
+    const oversized = await second.app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      headers: { host: "localhost", "content-type": "application/json" },
+      payload: { token: "x".repeat(1024 * 1024 + 1) }
+    });
+    expect(oversized.statusCode).toBe(413);
+    await built.app.close();
+    await second.app.close();
   });
 });

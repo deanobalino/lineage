@@ -44,6 +44,14 @@ export interface ReviewMetrics {
 
 export interface Review {
   base: string;
+  mergeBase: string;
+  commits: Array<{
+    sha: string;
+    shortSha: string;
+    author: string;
+    authoredAt: string;
+    subject: string;
+  }>;
   files: ChangedFile[];
   metrics: ReviewMetrics;
 }
@@ -177,4 +185,3 @@ export interface SessionDetail {
     edges: unknown[];
   };
 }
-

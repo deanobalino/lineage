@@ -133,8 +133,10 @@ export function RepositoryShell({ onLogout }: { onLogout: () => void }) {
             value={context.currentBranch ?? ""}
             onChange={(event) => void switchBranch(event.target.value)}
           >
-            {context.branches.filter((branch) => !branch.remote).map((branch) => (
-              <option key={branch.fullName} value={branch.name}>{branch.name}</option>
+            {context.branches.map((branch) => (
+              <option key={branch.fullName} value={branch.name}>
+                {branch.name}{branch.remote ? " · track remote" : ""}
+              </option>
             ))}
           </select>
           <ChevronIcon />

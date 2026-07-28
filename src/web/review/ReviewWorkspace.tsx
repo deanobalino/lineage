@@ -414,6 +414,16 @@ export function ReviewWorkspace() {
                     const number = lineNumber(entry);
                     const side = entry.kind === "deletion" ? "old" : "new";
                     const selected = number === selectedLine && side === selectedSide;
+                    const matchedSession = number
+                      ? diff.data?.sessions.find((session) =>
+                          session.lineRanges.some(
+                            (range) =>
+                              range.file === selectedPath &&
+                              number >= range.start &&
+                              number <= range.end
+                          )
+                        )
+                      : undefined;
                     return (
                       <button
                         type="button"
@@ -431,6 +441,14 @@ export function ReviewWorkspace() {
                           {entry.kind === "addition" ? "+" : entry.kind === "deletion" ? "−" : " "}
                         </span>
                         <code><CodeText text={entry.text} /></code>
+                        {matchedSession ? (
+                          <span
+                            className="provenance-marker"
+                            title={`${matchedSession.providerDisplayName} recorded provenance`}
+                          >
+                            {matchedSession.providerDisplayName}
+                          </span>
+                        ) : null}
                         {selected ? <span className="evidence-seam" aria-hidden="true" /> : null}
                       </button>
                     );

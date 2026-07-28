@@ -71,3 +71,17 @@ test("preserves Explore, sessions, capture, and exports at every viewport", asyn
   await expect(page.getByRole("button", { name: "Replay queue" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Recover Codex transcripts" })).toBeVisible();
 });
+
+test("renders hostile repository, diff, and commit text as inert content", async ({ page }) => {
+  const path = process.env["LINEAGE_E2E_HOSTILE_REPOSITORY"];
+  if (!path) throw new Error("Hostile fixture path is missing.");
+  await page.goto("/repositories");
+  await page.getByLabel("Path on this server").fill(path);
+  await page.getByRole("button", { name: "Open repository" }).click();
+  await expect(page.getByRole("heading", { name: "src/payload.ts" })).toBeVisible();
+  await expect(page.getByText(/svg onload/).last()).toBeVisible();
+  await expect(page.locator("img[src='x']")).toHaveCount(0);
+  await expect(page.locator("script")).toHaveCount(1);
+  expect(await page.evaluate(() => (window as Window & { __lineageXss?: number }).__lineageXss))
+    .toBeUndefined();
+});

@@ -34,6 +34,14 @@ export interface ChangedFile {
   binary: boolean;
 }
 
+export interface BranchCommit {
+  sha: string;
+  shortSha: string;
+  author: string;
+  authoredAt: string;
+  subject: string;
+}
+
 export class GitService {
   constructor(
     readonly timeoutMs = 15_000,
@@ -203,6 +211,31 @@ export class GitService {
       });
     }
     return files.map((file) => ({ ...file, ...(counts.get(file.path) ?? {}) }));
+  }
+
+  async mergeBase(repoRoot: string, base: string): Promise<string> {
+    await this.requireBranch(repoRoot, base);
+    return (await this.run(repoRoot, ["merge-base", base, "HEAD"])).stdout.trim();
+  }
+
+  async branchCommits(repoRoot: string, base: string): Promise<BranchCommit[]> {
+    const mergeBase = await this.mergeBase(repoRoot, base);
+    const output = (
+      await this.run(repoRoot, [
+        "log",
+        "--format=%H%x09%h%x09%an%x09%aI%x09%s",
+        `${mergeBase}..HEAD`
+      ])
+    ).stdout;
+    return output
+      .split("\n")
+      .filter(Boolean)
+      .flatMap((line) => {
+        const [sha, shortSha, author, authoredAt, subject] = line.split("\t");
+        return sha && shortSha && author && authoredAt && subject
+          ? [{ sha, shortSha, author, authoredAt, subject }]
+          : [];
+      });
   }
 
   async diff(repoRoot: string, base: string, path: string): Promise<string> {

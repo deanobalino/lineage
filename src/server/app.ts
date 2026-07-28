@@ -158,6 +158,15 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     if (
       error &&
       typeof error === "object" &&
+      "statusCode" in error &&
+      error.statusCode === 413
+    ) {
+      void reply.code(413).send({ error: "payload_too_large", message: "Request body exceeds the configured limit." });
+      return;
+    }
+    if (
+      error &&
+      typeof error === "object" &&
       "validation" in error &&
       error.validation
     ) {
@@ -335,6 +344,8 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     const sessions = await new ProvenanceStore(record.root).sessions();
     return {
       base,
+      mergeBase: await git.mergeBase(record.root, base),
+      commits: await git.branchCommits(record.root, base),
       files: files.map((file) => ({
         ...file,
         providers: [

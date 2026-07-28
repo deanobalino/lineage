@@ -1,6 +1,7 @@
 name: Compatibility oracle
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -25,16 +26,23 @@ jobs:
       - name: Confirm pinned baseline exists
         run: git cat-file -e 105ef5d900a3511496f5b8a39d8ee70b1212bffa^{commit}
 
-      - name: Confirm characterized Swift surface still matches baseline
+      - name: Reconstruct characterized Swift baseline
         run: |
-          git diff --exit-code \
-            105ef5d900a3511496f5b8a39d8ee70b1212bffa \
-            -- Package.swift Sources/LineageCore Sources/lineage-capture
+          git worktree add --detach "${RUNNER_TEMP}/swift-baseline" \
+            105ef5d900a3511496f5b8a39d8ee70b1212bffa
+          git show \
+            d1598a6:Tests/LineageCoreTests/CompatibilityOracleTests.swift \
+            > "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/CompatibilityOracleTests.swift"
+          mkdir -p "${RUNNER_TEMP}/swift-baseline/tests"
+          cp -R tests/fixtures "${RUNNER_TEMP}/swift-baseline/tests/fixtures"
 
       - name: Emit normalized Swift oracle
         env:
           LINEAGE_ORACLE_OUTPUT_DIR: ${{ runner.temp }}/lineage-oracle
-        run: swift test --filter CompatibilityOracleTests
+        run: |
+          swift test \
+            --package-path "${RUNNER_TEMP}/swift-baseline" \
+            --filter CompatibilityOracleTests
 
       - name: Verify fixture manifest and cutover matrix
         run: |
@@ -53,3 +61,19 @@ jobs:
           path: |
             ${{ runner.temp }}/lineage-oracle/normalized.json
             ${{ runner.temp }}/lineage-parity/report.json
+
+  web-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.0"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:browser

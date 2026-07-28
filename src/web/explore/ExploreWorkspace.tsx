@@ -12,6 +12,81 @@ import { useAsync } from "../hooks.js";
 import { EvidenceInspector } from "../review/ReviewWorkspace.js";
 import type { ShellContext } from "../shell/RepositoryShell.js";
 
+interface PathNode {
+  name: string;
+  path: string;
+  file: boolean;
+  children: Map<string, PathNode>;
+}
+
+function pathTree(paths: string[]): PathNode[] {
+  const root = new Map<string, PathNode>();
+  for (const path of paths) {
+    const segments = path.split("/");
+    let children = root;
+    let current = "";
+    segments.forEach((name, index) => {
+      current = current ? `${current}/${name}` : name;
+      let node = children.get(name);
+      if (!node) {
+        node = {
+          name,
+          path: current,
+          file: index === segments.length - 1,
+          children: new Map()
+        };
+        children.set(name, node);
+      }
+      children = node.children;
+    });
+  }
+  const sorted = (nodes: Map<string, PathNode>): PathNode[] =>
+    [...nodes.values()]
+      .map((node) => ({
+        ...node,
+        children: new Map(sorted(node.children).map((child) => [child.name, child]))
+      }))
+      .sort((left, right) => Number(left.file) - Number(right.file) || left.name.localeCompare(right.name));
+  return sorted(root);
+}
+
+function PathTree({
+  nodes,
+  selectedPath,
+  choosePath
+}: {
+  nodes: PathNode[];
+  selectedPath: string;
+  choosePath: (path: string) => void;
+}) {
+  return (
+    <ul className="path-tree" role="tree">
+      {nodes.map((node) => (
+        <li key={node.path} role="treeitem">
+          {node.file ? (
+            <button
+              type="button"
+              className={node.path === selectedPath ? "selected" : ""}
+              onClick={() => choosePath(node.path)}
+            >
+              {node.name}
+            </button>
+          ) : (
+            <details open={selectedPath.startsWith(`${node.path}/`)}>
+              <summary>{node.name}</summary>
+              <PathTree
+                nodes={[...node.children.values()]}
+                selectedPath={selectedPath}
+                choosePath={choosePath}
+              />
+            </details>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ExploreWorkspace() {
   const { repositoryId = "" } = useParams();
   const { repository } = useOutletContext<ShellContext>();
@@ -58,6 +133,7 @@ export function ExploreWorkspace() {
     const query = filter.toLowerCase().trim();
     return files.data?.files.filter((path) => path.toLowerCase().includes(query)) ?? [];
   }, [files.data, filter]);
+  const tree = useMemo(() => pathTree(visibleFiles), [visibleFiles]);
 
   function choosePath(path: string) {
     const next = new URLSearchParams();
@@ -89,18 +165,7 @@ export function ExploreWorkspace() {
           placeholder="Search paths"
         />
       </label>
-      <div className="path-list">
-        {visibleFiles.map((path) => (
-          <button
-            type="button"
-            key={path}
-            className={path === selectedPath ? "selected" : ""}
-            onClick={() => choosePath(path)}
-          >
-            {path}
-          </button>
-        ))}
-      </div>
+      <PathTree nodes={tree} selectedPath={selectedPath} choosePath={choosePath} />
     </aside>
   );
 

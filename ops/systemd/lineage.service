@@ -1,0 +1,21 @@
+[Unit]
+Description=Lineage self-hosted provenance review
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dean/lineage
+ExecStart=/home/dean/.npm-global/bin/npm start
+Restart=on-failure
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=LINEAGE_HOST=127.0.0.1
+Environment=LINEAGE_PORT=3217
+Environment=LINEAGE_CAPTURE_PORT=3218
+Environment=LINEAGE_ALLOWED_ROOTS=/home/dean
+Environment=LINEAGE_ALLOWED_HOSTS=vmi3069815.tail816f62.ts.net
+Environment=LINEAGE_ALLOWED_ORIGINS=https://vmi3069815.tail816f62.ts.net:9443
+Environment=LINEAGE_LOG_LEVEL=info
+
+[Install]
+WantedBy=default.target
