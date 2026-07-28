@@ -1,4 +1,4 @@
-name: Compatibility oracle
+name: Compatibility gate
 
 on:
   workflow_dispatch:
@@ -11,66 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  swift-oracle:
-    runs-on: macos-15
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.0"
-
-      - name: Confirm pinned baseline exists
-        run: git cat-file -e 105ef5d900a3511496f5b8a39d8ee70b1212bffa^{commit}
-
-      - name: Reconstruct characterized Swift baseline
-        run: |
-          git worktree add --detach "${RUNNER_TEMP}/swift-baseline" \
-            105ef5d900a3511496f5b8a39d8ee70b1212bffa
-          rm \
-            "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/CodingHarnessPluginTests.swift" \
-            "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/ProvenanceGraphTests.swift"
-          git show \
-            d1598a6:Tests/LineageCoreTests/CompatibilityOracleTests.swift \
-            > "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/CompatibilityOracleTests.swift"
-          mkdir -p "${RUNNER_TEMP}/swift-baseline/tests"
-          cp -R tests/fixtures "${RUNNER_TEMP}/swift-baseline/tests/fixtures"
-
-      - name: Emit normalized Swift oracle
-        env:
-          LINEAGE_ORACLE_OUTPUT_DIR: ${{ runner.temp }}/lineage-oracle
-        run: |
-          swift test \
-            --package-path "${RUNNER_TEMP}/swift-baseline" \
-            --filter CompatibilityOracleTests
-
-      - name: Verify fixture manifest and cutover matrix
-        run: |
-          mkdir -p "${RUNNER_TEMP}/lineage-parity"
-          node scripts/verify-parity.mjs \
-            --oracle "${RUNNER_TEMP}/lineage-oracle" \
-            --output "${RUNNER_TEMP}/lineage-parity/report.json"
-
-      - name: Retain normalized oracle and gate report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lineage-compatibility-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 30
-          path: |
-            ${{ runner.temp }}/lineage-oracle/normalized.json
-            ${{ runner.temp }}/lineage-parity/report.json
-
   web-gates:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22.15.0"
           cache: npm
@@ -78,5 +24,6 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
       - run: npm test
+      - run: npm run verify:parity
       - run: npm run build
       - run: npm run test:browser

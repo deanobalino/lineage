@@ -10,12 +10,12 @@ The Node/TypeScript implementation covers every row in `web-parity-matrix.json`.
 
 ## Automated evidence
 
-- 28 Vitest domain, storage, provider, capture, and server tests pass.
+- 29 Vitest domain, storage, provider, capture, and server tests pass.
 - 9 server integration tests pass, including authentication throttling, session expiry, CSRF, Host/Origin, repository/symlink boundaries, credential rotation, body limits, and security headers.
 - 9 real-browser tests pass across desktop Chromium, tablet Chromium, and touch-phone Chromium.
 - Browser coverage uses real Git-backed demo and hostile-content repositories and covers Review, Explore, selected-line evidence, sessions, capture, exports, and inert rendering of repository-controlled text.
 - Production capture and web bundles build from a clean Node install.
-- The macOS compatibility job reconstructs the immutable Swift baseline in a detached worktree, emits the normalized oracle, validates fixture checksums, and verifies all 45 matrix rows.
+- The immutable baseline oracle is retained in `docs/parity/oracle/normalized.json`; the Node compatibility gate validates its contract, fixture checksums, and all 45 matrix rows.
 
 ## Dependency review
 
@@ -29,4 +29,6 @@ The Node/TypeScript implementation covers every row in `web-parity-matrix.json`.
 
 ## Cutover decision
 
-Swift may be removed only after the retained macOS oracle artifact reports `cutoverReady: true`. The oracle source is reconstructed from immutable Git commits, so deleting the working-tree Swift product does not weaken the permanent compatibility check.
+GitHub Actions run `30348227960` reported `cutoverReady: true`, `oraclePresent: true`, 45 of 45 rows verified, and no failures. The retained normalized oracle has SHA-256 `761e137105c1d6002d32bebf5b22be46b3445d563c238196445be640c7c470b6`.
+
+The one-time native oracle gate is complete. Its normalized output is now a permanent repository fixture, so deleting the legacy product also removes the native CI/toolchain dependency without weakening the compatibility check.

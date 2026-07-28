@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "baselineCommit": "105ef5d900a3511496f5b8a39d8ee70b1212bffa",
   "fixtureManifest": "tests/fixtures/compatibility/manifest.json",
-  "oracleArtifact": "oracle/normalized.json",
+  "oracleArtifact": "docs/parity/oracle/normalized.json",
   "cutoverPolicy": {
     "requiredStatus": "verified",
     "requireLegacyEvidence": true,

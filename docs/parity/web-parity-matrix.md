@@ -4,7 +4,7 @@ This inventory is the hard cutover gate for the web-only replacement. The machin
 
 Baseline Swift commit: `105ef5d900a3511496f5b8a39d8ee70b1212bffa`
 
-Current gate state: **GREEN when the retained macOS oracle is present**. All 45 rows name replacement evidence and are machine-verified against the pinned fixture manifest; the Swift semantic oracle remains a required CI input.
+Current gate state: **GREEN**. All 45 rows name replacement evidence and are machine-verified against the pinned fixture manifest and retained normalized oracle.
 
 ## Evidence rules
 

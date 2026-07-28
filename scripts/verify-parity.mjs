@@ -79,16 +79,19 @@ for (const fixture of manifest.files ?? []) {
   }
 }
 
-const oracleOption = option("--oracle") ?? process.env.LINEAGE_ORACLE_OUTPUT_DIR;
+const oracleOption =
+  option("--oracle") ??
+  process.env.LINEAGE_ORACLE_OUTPUT_DIR ??
+  matrix.oracleArtifact;
 const oraclePath = oracleOption
   ? (oracleOption.endsWith(".json") ? absolute(oracleOption) : join(absolute(oracleOption), matrix.oracleArtifact.split("/").at(-1)))
   : undefined;
 if (!oraclePath || !existsSync(oraclePath)) {
-  failures.push("normalized Swift oracle is missing; pass --oracle <directory-or-json>");
+  failures.push("retained compatibility oracle is missing");
 } else {
   const oracle = readJSON(oraclePath);
   if (oracle.schema_version !== 1 || oracle.baseline !== "swift-lineage-core") {
-    failures.push("normalized Swift oracle has an unsupported contract");
+    failures.push("retained compatibility oracle has an unsupported contract");
   }
 }
 

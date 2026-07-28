@@ -2,216 +2,172 @@
 
 **Every line has a story.**
 
-Git blame tells you who. Lineage tells you why.
+Lineage is a local-first, self-hosted web application for reviewing AI coding provenance. It reads the `.lineage/provenance` data already stored inside Git repositories, links provider evidence to commits and line ranges, and answers the practical question: why does this line exist?
 
-Lineage is a local-first macOS app for AI coding provenance. Codex and GitHub Copilot CLI are supported coding harnesses. Harness support is plugin-based so Claude Code, Cursor, and other coding agents can be added without creating a second provenance pipeline. Lineage captures provider evidence, links it to Git commits and line ranges, and lets an engineer ask: "Why does this line of code exist?"
+The browser is a client of a local Node server. It never reads Git or the filesystem directly. Repository paths stay on the host, browser routes use opaque repository IDs, and capture arrives through a separate loopback-only listener.
 
-Lineage does not claim to capture private model reasoning. It records prompts, tool calls/results, permission or approval events when providers expose them, diffs, tests, final assistant messages, and Git evidence.
+Lineage records provider-visible prompts, tool activity, permission and user decisions, external constraints, diffs, tests, final messages, and Git evidence. It does not claim to capture private model reasoning.
+
+## Requirements
+
+- Node.js 22.15 or newer
+- Git
+- A local repository under an operator-approved root
+- Chromium only for the browser test suite
+
+Tailscale is optional development transport. It is not required by Lineage or by end users.
 
 ## Run locally
 
-```bash
-swift run Lineage
-```
-
-The welcome screen offers:
-
-- **Open Repository** for any local Git repository.
-- **Open Demo Repository** for a generated demo repo with real commits and recorded Codex provenance.
-
-Inside a repository, Lineage has two modes:
-
-- **Review**: local branch/MR-style review. Compare the current branch against a selected base branch and ask why changed files/hunks exist.
-- **Explore**: line-level incident/history archaeology. Click a line and inspect why that existing line exists.
-
-## Build a macOS app bundle
+Install and build:
 
 ```bash
-Scripts/build-macos-app.sh
-open dist/Lineage.app
+npm ci
+npm run build
 ```
 
-The bundle includes both `Lineage` and `lineage-capture` in `Contents/MacOS`, so **Install Codex Capture** can write a stable absolute collector path for a demo repository.
-
-## Capture CLI
-
-Build the local capture command:
+Start the production server:
 
 ```bash
-swift build --product lineage-capture
+LINEAGE_ALLOWED_ROOTS=/path/you/allow npm start
 ```
 
-The executable reads provider hook JSON from stdin, maps it into Lineage's canonical event schema, and appends structured events to:
+On first start, Lineage creates its state directory with owner-only permissions and prints a one-time operator token. Open `http://127.0.0.1:3217`, enter that token, then choose **Open repository**. The registry stores the canonical local path in a mode-0600 file so the repository remains available on later visits without another import.
+
+For source development:
+
+```bash
+npm run dev
+```
+
+The Node server serves the built production UI from `dist/web`. Run `npm run build:web` after frontend changes, or use `npm run dev:web` for the standalone Vite development server.
+
+## Product workflows
+
+**Review** is the primary workspace. It compares the checked-out branch with a selected local or remote base, shows status-grouped files, real hunks, per-line provenance markers, branch commits, and adjacent evidence. On tablet and phone the same workspace becomes focused file, diff, and evidence views with URL-backed selection and browser Back support.
+
+**Explore** is repository archaeology. Browse the source tree, select a line, and inspect provider evidence or Git-only history.
+
+The web app also includes:
+
+- repository open, forget, unavailable-state recovery, and demo reset
+- local and remote branch selection
+- provider-first explanations with explicit Git-only fallback
+- sessions, transcript evidence, and follow-up prompts
+- capture installation, activity, queue, replay, degraded state, and dead letters
+- Markdown and Agent Trace exports
+- responsive access to every action on desktop, tablet, and phone
+
+## Capture
+
+Build the capture entry point with the application:
+
+```bash
+npm run build:capture
+```
+
+The output is `dist/lineage-capture.mjs`. It accepts provider hook JSON on stdin and supports Codex and GitHub Copilot CLI hook installation without replacing unrelated configuration.
+
+Capture is durable before network delivery:
+
+1. validate and bound the provider input
+2. persist an envelope by temporary write, flush, and atomic rename
+3. attempt a short request to the isolated loopback listener
+4. always let hook mode exit successfully within one second
+5. replay pending records through leases, quotas, retries, and dead letters
+
+Delivery is at least once and server ingestion is idempotent by the capture ingestion ID. Storage or quota failure remains fail-open for the provider but is reported as degraded health; Lineage never claims unsaved evidence was captured.
+
+Useful explicit commands fail closed:
+
+```bash
+node dist/lineage-capture.mjs --doctor /path/to/repo
+node dist/lineage-capture.mjs --link /path/to/repo
+node dist/lineage-capture.mjs --verify-line /path/to/repo src/file.ts marker
+node dist/lineage-capture.mjs --recover-codex /path/to/repo
+```
+
+Hook mode and administrative commands share the same TypeScript domain services as the host server.
+
+## Data compatibility
+
+Existing data remains authoritative and requires no migration:
 
 ```text
 .lineage/provenance/events.jsonl
-```
-
-On `Stop`, it also runs the session linker and writes durable summaries to:
-
-```text
 .lineage/provenance/sessions/*.json
 ```
 
-Example:
+Readers tolerate legacy missing fields, malformed JSONL records, and unknown provider payloads. New writes retain the established snake-case JSONL/session formats, stable graph and Agent Trace hashes, redaction rules, line expansion limits, and deterministic ordering.
 
-```bash
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"codex-demo","payload":{"prompt":"Fix retry policy"}}' | swift run lineage-capture
-```
+The cutover contract lives in:
 
-Diagnostics:
+- `docs/parity/web-parity-matrix.json`
+- `tests/fixtures/compatibility/manifest.json`
+- `.github/workflows/compatibility-oracle.yml`
 
-```bash
-lineage-capture --doctor /path/to/repo
-lineage-capture --link /path/to/repo
-lineage-capture --verify-line /path/to/repo packages/shared/src/learning.ts someLineMarker
-```
+The pre-cutover implementation was run once at the immutable baseline commit and its normalized semantic oracle is retained at `docs/parity/oracle/normalized.json`. CI verifies that artifact, fixture checksums, and all 45 parity rows on Node/Linux. There is no native toolchain, build, CI, or runtime dependency in the current product.
 
-`--doctor` proves the collector can resolve and write to the repository. `--link` rebuilds session summaries after a change has been committed, which is also what Lineage runs during refresh. `--verify-line` exercises the same explanation engine as the app and fails if the selected line has no matched provider provenance.
+## Self-hosting and Tailscale development
 
-Canonical events include:
-
-- `provider`
-- `provider_event_name`
-- `event_type`
-- `actor`
-- `human`
-- `session_id`
-- `turn_id`
-- `repo_root`
-- `cwd`
-- `payload`
-
-Provider-specific details remain in `payload` so adapters can preserve source evidence without forcing every provider into the same raw shape.
-
-Decision-oriented canonical event types include:
-
-- `assistant_options_presented`
-- `user_decision`
-- `permission_decision`
-- `external_constraint`
-
-When a provider exposes prompted human decisions, Lineage stores the actual selected option text, all presented alternatives, and freeform responses when the human writes something different. Permission decisions are recorded only when the provider exposes the decision/status.
-
-External constraints can be captured as provider-agnostic evidence with:
-
-- file path
-- line or range when known
-- excerpt or summary
-- whether it came from a tool read or was inferred from provider/diff context
-
-The right pane renders this as an ADR-like decision record: context, decision, alternatives considered, external constraints, evidence, and consequences/risk when available.
-
-## Coding harness capture
-
-The capture controls in the bottom-left sidebar install either or both coding-harness plugins. Configurations coexist, so different engineers—or different sessions in the same codebase—can use Codex, Copilot CLI, or both while events remain attributed to the correct harness.
-
-**Codex** creates:
+The default listeners are:
 
 ```text
-.lineage/provenance/
-.codex/config.toml
+Browser: 127.0.0.1:3217
+Capture: 127.0.0.1:3218
 ```
 
-The generated config follows the requested Codex hook shape for:
+Only the browser listener may be placed behind a TLS reverse proxy. The capture listener must stay loopback-only.
 
-- `SessionStart`
-- `UserPromptSubmit`
-- `PreToolUse`
-- `PostToolUse`
-- `PermissionRequest`
-- `Stop`
-
-If the hook schema changes in Codex, keep the same command target and update the TOML matcher shape in `Sources/LineageCore/HookConfig.swift`.
-
-**GitHub Copilot CLI** creates:
-
-```text
-.lineage/provenance/
-.github/hooks/lineage-copilot.json
-```
-
-The generated JSON uses Copilot CLI's repository hook format and captures `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `Stop`, and `SessionEnd`. Every hook sets `LINEAGE_PROVIDER=github-copilot` and its own `LINEAGE_HOOK_EVENT`, which keeps Copilot events separate from Codex events and preserves the lifecycle event when Copilot sends a native camelCase payload without an event-name field. Copilot CLI reloads hook changes when the CLI starts, so reinstall capture and restart Copilot CLI after upgrading Lineage. See GitHub's [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
-
-## Provider adapters
-
-Provider support lives behind `ProvenanceProviderAdapter`.
-
-Current harness plugins:
-
-- `CodexHarnessPlugin` / `CodexProviderAdapter`
-- `GitHubCopilotCLIHarnessPlugin` / `GitHubCopilotProviderAdapter`
-
-Adapter responsibilities:
-
-- identify the provider, for example `codex`
-- map native provider event names into canonical `event_type` values
-- preserve raw provider evidence in `payload`
-- normalize prompt, tool, command, approval, prompted decision, external constraint, final-message, diff, test, and changed-file fields where the provider supplies them
-
-To add another coding harness, implement `CodingHarnessPlugin` and its `ProvenanceProviderAdapter`, then register the plugin in `CodingHarnessPluginRegistry`. The shared installer, configured-harness status, collector routing, session linker, and right-pane evidence UI then use the plugin automatically.
-
-## Demo your own repository
-
-1. Launch Lineage:
-
-   ```bash
-   swift run Lineage
-   ```
-
-2. Click **Open Repository** and choose your repo.
-3. In **Capture setup** at the bottom-left, install Codex capture, Copilot CLI capture, or both. Lineage builds or finds `lineage-capture`, copies it to `~/.lineage/bin/lineage-capture`, creates `.lineage/provenance/`, writes each harness's config, and runs a local collector self-check.
-4. Use a configured harness in that repo and make a change. Restart Copilot CLI after installing its hooks. If a harness prompts you to trust hooks, approve them; Lineage's **Capture activity** status confirms whether events have actually been written.
-5. Return to Lineage and click **Refresh**. Lineage reloads Git state, links captured events into `.lineage/provenance/sessions/*.json`, and updates line badges/explanations.
-
-Repository loading, branch switching, refresh, and line explanations run off the main UI thread so large repos should remain responsive.
-
-## Review a branch locally
-
-Use **Review** mode for the main reviewer workflow.
-
-Lineage compares the current branch to a selectable base branch. The default base prefers `origin/main`, `main`, `upstream/main`, `origin/master`, or `master` when present. It uses local Git state only:
+This repository includes a user service at `ops/systemd/lineage.service`. The current development VPS exposes only the authenticated browser app to its tailnet:
 
 ```bash
-git merge-base <base> HEAD
-git diff --name-status <base>...HEAD
-git diff <base>...HEAD
-git log --oneline <merge-base>..HEAD
+tailscale serve --bg --https=9443 http://127.0.0.1:3217
 ```
 
-Review mode shows:
+See `ops/tailscale/README.md` for the development boundary. For an internet-facing deployment, configure a real TLS reverse proxy, explicit `LINEAGE_ALLOWED_HOSTS` and `LINEAGE_ALLOWED_ORIGINS`, a narrow `LINEAGE_ALLOWED_ROOTS`, and an independent backup policy for both Lineage state and repository provenance.
 
-- changed files grouped by status: added, modified, deleted, renamed
-- summary metrics: files changed, commits on branch, provider sessions linked, files with recorded provenance, files inferred from Git only
-- hunk-oriented diffs with old/new line numbers
-- provider-first change explanations in the right pane
+## Security model
 
-If provider provenance maps to a changed file, Lineage shows the prompt, decisions, external constraints, tests, final message, and provider evidence first. If no provider evidence matches, it says the review explanation is inferred from local Git only.
+- random bootstrap credentials are displayed once; only verifier digests are stored server-side
+- operator sessions are short-lived, server-side, revocable, `HttpOnly`, and `SameSite=Strict`
+- state and secret files use owner-only permissions
+- mutations require same-origin checks and CSRF tokens
+- Host and Origin allowlists protect reverse-proxied access
+- login attempts are throttled and request bodies are bounded
+- Git commands use fixed executable arguments plus time and output caps
+- repository-controlled text is rendered as inert text under a restrictive CSP
+- sensitive responses are `no-store`
 
-No remote MR/PR API integration is used yet. Local branch review approximates MR review from your checked-out Git state. The model includes branch commit data so commit-level review can be added next.
+Forgetting a repository removes registry state only. It never deletes `.lineage/provenance` or repository files.
 
 ## Architecture
 
 ```text
-AI coding harness plugins (Codex, Copilot CLI, ...)
-        ↓
-lineage-capture local command
-        ↓
-provider adapter
-        ↓
-.lineage/provenance/events.jsonl
-        ↓
-session summariser / linker
-        ↓
-.lineage/provenance/sessions/*.json
-        ↓
-git commit + line-range mapping
-        ↓
-Lineage macOS app
-        ↓
-"Why does this line exist?"
+Codex / GitHub Copilot CLI hooks
+            |
+            v
+durable capture outbox ----> loopback capture listener :3218
+                                      |
+                                      v
+                           .lineage/provenance
+                                      |
+                                      v
+browser :3217 <---- authenticated Fastify API ----> bounded Git adapter
+      |
+      +---- Review / Explore / Sessions / Capture / Exports
 ```
 
-Captured provider provenance is treated as the source of truth. Git is supporting evidence for commits, blame, diffs, and line mapping. Harness-specific events share one canonical schema while preserving their native payload and provider identity.
+The boundary between browser, host services, capture, and the compatibility domain is ordinary HTTP and TypeScript. This leaves room for a future centrally hosted mode without changing the local provenance format.
 
-The primary product workflow is code review: understanding why a branch's changes exist before merging. The secondary workflow is incident archaeology: understanding why an existing line remains in the codebase.
+## Quality gates
+
+```bash
+npm run typecheck
+npm test
+npm run test:integration
+npm run build
+npm run test:browser
+```
+
+The browser suite exercises real Git-backed repositories across desktop, tablet, and touch-phone Chromium projects, including hostile source, diff, and commit text.

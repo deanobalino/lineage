@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baselineCommit": "105ef5d900a3511496f5b8a39d8ee70b1212bffa",
-  "oracleGenerator": "Tests/LineageCoreTests/CompatibilityOracleTests.swift",
+  "oracleArtifact": "docs/parity/oracle/normalized.json",
   "oracleFilename": "normalized.json",
   "files": [
     {
