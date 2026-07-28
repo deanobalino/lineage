@@ -7,7 +7,7 @@
   {
     "id": "bearer",
     "input": "Authorization: Bearer abcdefghijklmnopqrstuvwxyz.123",
-    "expected": "[REDACTED]"
+    "expected": "Authorization: [REDACTED]"
   },
   {
     "id": "assignment",
