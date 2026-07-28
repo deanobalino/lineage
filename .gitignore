@@ -70,6 +70,8 @@ fastlane/test_output
 
 # Node
 node_modules/
+test-results/
+playwright-report/
 
 # Compound Engineering machine-local preferences
 .compound-engineering/*.local.yaml

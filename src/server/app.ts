@@ -1,4 +1,5 @@
 import cookie from "@fastify/cookie";
+import fastifyStatic from "@fastify/static";
 import { Type } from "@sinclair/typebox";
 import Fastify, {
   type FastifyInstance,
@@ -664,6 +665,25 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     const record = await repository(request, registry);
     return recoverCodexTranscripts(record.root, config.transcriptRoots);
   });
+
+  try {
+    const webRoot = await realpath(join(process.cwd(), "dist", "web"));
+    await app.register(fastifyStatic, {
+      root: webRoot,
+      index: ["index.html"]
+    });
+    app.setNotFoundHandler((request, reply) => {
+      if (
+        request.method === "GET" &&
+        !request.url.startsWith("/api/")
+      ) {
+        return reply.header("cache-control", "no-store").sendFile("index.html");
+      }
+      return reply.code(404).send({ error: "not_found", message: "Route not found." });
+    });
+  } catch {
+    // Development and integration tests may run before the web build exists.
+  }
 
   return {
     app,
