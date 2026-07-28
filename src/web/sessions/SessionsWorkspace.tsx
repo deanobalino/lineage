@@ -13,7 +13,15 @@ export function SessionsWorkspace() {
           <h1>Sessions</h1>
           <p>Recorded provider activity linked to this repository.</p>
         </div>
-        <a href={api.exportUrl(repositoryId, "agent-trace")}>Export Agent Trace</a>
+        <a
+          href={api.exportUrl(repositoryId, "agent-trace")}
+          onClick={(event) => {
+            event.preventDefault();
+            void api.download(event.currentTarget.href).catch(() => undefined);
+          }}
+        >
+          Export Agent Trace
+        </a>
       </header>
       {sessions.loading ? <LoadingRows count={10} /> : null}
       {sessions.error ? <ErrorNotice message={sessions.error.message} retry={sessions.reload} /> : null}
@@ -27,7 +35,7 @@ export function SessionsWorkspace() {
         {sessions.data?.sessions.map((session) => (
           <Link
             key={`${session.provider}-${session.sessionId}`}
-            to={`/r/${repositoryId}/sessions/${encodeURIComponent(session.sessionId)}`}
+            to={`/r/${repositoryId}/sessions/${encodeURIComponent(session.provider)}/${encodeURIComponent(session.sessionId)}`}
           >
             <span>
               <strong>{session.providerDisplayName}</strong>
@@ -43,4 +51,3 @@ export function SessionsWorkspace() {
     </main>
   );
 }
-

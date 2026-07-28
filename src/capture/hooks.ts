@@ -1,6 +1,7 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { atomicWrite } from "../domain/provenance-store.js";
+import { inspectContainedPath } from "../shared/path-safety.js";
 
 export type HarnessProvider = "codex" | "github-copilot";
 
@@ -13,6 +14,14 @@ export interface HarnessStatus {
 
 const markerStart = "# >>> lineage managed hooks >>>";
 const markerEnd = "# <<< lineage managed hooks <<<";
+const codexEvents = [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PermissionRequest",
+  "PostToolUse",
+  "Stop"
+] as const;
 
 function quote(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
@@ -98,13 +107,17 @@ function stripOwnedCodex(content: string): string {
 }
 
 function enableCodexHooks(content: string): string {
-  if (/^\[features\]\s*$/m.test(content)) {
-    if (/^hooks\s*=/m.test(content)) {
-      return content.replace(/^hooks\s*=.*$/m, "hooks = true");
-    }
-    return content.replace(/^\[features\]\s*$/m, "[features]\nhooks = true");
-  }
-  return `[features]\nhooks = true\n\n${content}`;
+  const lines = content.split("\n");
+  const start = lines.findIndex((line) => /^\[features\]\s*$/.test(line));
+  if (start < 0) return `[features]\nhooks = true\n\n${content}`;
+  const end = lines.findIndex((line, index) => index > start && /^\[\[?.+\]?\]\s*$/.test(line));
+  const boundary = end < 0 ? lines.length : end;
+  const hook = lines.findIndex(
+    (line, index) => index > start && index < boundary && /^hooks\s*=/.test(line)
+  );
+  if (hook >= 0) lines[hook] = "hooks = true";
+  else lines.splice(start + 1, 0, "hooks = true");
+  return lines.join("\n");
 }
 
 export async function installHarness(
@@ -112,15 +125,26 @@ export async function installHarness(
   provider: HarnessProvider,
   command: string
 ): Promise<HarnessStatus> {
-  const path =
+  const relativePath =
     provider === "codex"
-      ? join(repoRoot, ".codex", "config.toml")
-      : join(repoRoot, ".github", "hooks", "lineage-copilot.json");
+      ? ".codex/config.toml"
+      : ".github/hooks/lineage-copilot.json";
+  const inspected = await inspectContainedPath(repoRoot, relativePath);
+  if (inspected.status === "unsafe" || inspected.status === "directory" || inspected.status === "other") {
+    throw new Error("Harness configuration path is unsafe.");
+  }
+  const path =
+    inspected.path;
   await mkdir(dirname(path), { recursive: true });
+  const created = await inspectContainedPath(repoRoot, relativePath);
+  if (created.status === "unsafe" || created.status === "directory" || created.status === "other") {
+    throw new Error("Harness configuration path is unsafe.");
+  }
   let original = "";
   try {
     original = await readFile(path, "utf8");
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     original = provider === "github-copilot" ? "{}\n" : "";
   }
   const backup = `${path}.lineage-backup-${Date.now()}`;
@@ -128,29 +152,97 @@ export async function installHarness(
   try {
     if (provider === "codex") {
       const clean = enableCodexHooks(stripOwnedCodex(original));
-      await atomicWrite(path, `${clean.trimEnd()}\n\n${codexHooks(command)}\n`, 0o600);
+      const generated = `${clean.trimEnd()}\n\n${codexHooks(command)}\n`;
+      validateHarnessConfiguration(provider, generated, command);
+      await atomicWrite(path, generated, 0o600);
     } else {
-      let document: Record<string, unknown>;
-      try {
-        document = JSON.parse(original) as Record<string, unknown>;
-      } catch {
-        document = {};
+      const document = JSON.parse(original) as Record<string, unknown>;
+      if (!document || typeof document !== "object" || Array.isArray(document)) {
+        throw new Error("Copilot hook configuration must be a JSON object.");
       }
       const existingHooks =
-        document["hooks"] && typeof document["hooks"] === "object"
+        document["hooks"] &&
+        typeof document["hooks"] === "object" &&
+        !Array.isArray(document["hooks"])
           ? document["hooks"] as Record<string, unknown>
           : {};
       const owned = (copilotHooks(command)["hooks"] ?? {}) as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...existingHooks };
+      for (const [event, value] of Object.entries(owned)) {
+        if (event in existingHooks && !Array.isArray(existingHooks[event])) {
+          throw new Error(`Copilot ${event} hooks must be an array.`);
+        }
+        const unrelated = Array.isArray(existingHooks[event])
+          ? existingHooks[event].filter((entry) => !isOwnedCopilotHook(entry))
+          : [];
+        merged[event] = [...unrelated, ...(value as unknown[])];
+      }
+      const generated = `${JSON.stringify(
+        { ...document, version: 1, hooks: merged },
+        null,
+        2
+      )}\n`;
+      validateHarnessConfiguration(provider, generated, command);
       await atomicWrite(
         path,
-        `${JSON.stringify({ ...document, version: 1, hooks: { ...existingHooks, ...owned } }, null, 2)}\n`,
+        generated,
         0o600
       );
     }
-    return harnessStatus(repoRoot, provider);
+    const installed = await harnessStatus(repoRoot, provider);
+    if (!installed.configured || !installed.owned) {
+      throw new Error("Harness configuration validation failed after installation.");
+    }
+    return installed;
   } catch (error) {
     await atomicWrite(path, original, 0o600);
     throw error;
+  }
+}
+
+export function validateHarnessConfiguration(
+  provider: HarnessProvider,
+  content: string,
+  command: string
+): void {
+  if (provider === "github-copilot") {
+    const document = JSON.parse(content) as Record<string, unknown>;
+    const hooks = document["hooks"];
+    if (document["version"] !== 1 || !hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
+      throw new Error("Generated Copilot hook configuration is invalid.");
+    }
+    for (const event of Object.keys((copilotHooks(command)["hooks"] ?? {}) as object)) {
+      const values = (hooks as Record<string, unknown>)[event];
+      const owned = Array.isArray(values)
+        ? values.filter((value) => isOwnedCopilotHook(value))
+        : [];
+      if (
+        owned.length !== 1 ||
+        (owned[0] as Record<string, unknown>)["command"] !== command
+      ) {
+        throw new Error(`Generated Copilot ${event} hook is invalid.`);
+      }
+    }
+    return;
+  }
+  validateTomlShape(content);
+  if (!/^\[features\]$/m.test(content) || !/^hooks\s*=\s*true$/m.test(content)) {
+    throw new Error("Generated Codex hook feature configuration is invalid.");
+  }
+  for (const event of codexEvents) {
+    const blocks = [...content.matchAll(
+      new RegExp(
+        `\\[\\[hooks\\.${event}\\]\\][\\s\\S]*?\\[\\[hooks\\.${event}\\.hooks\\]\\]([\\s\\S]*?)(?=\\[\\[hooks\\.|${escapeRegex(markerEnd)})`,
+        "g"
+      )
+    )];
+    if (
+      blocks.length !== 1 ||
+      !new RegExp(`^command\\s*=\\s*${escapeRegex(quote(command))}$`, "m")
+        .test(blocks[0]?.[1] ?? "")
+    ) {
+      throw new Error(`Generated Codex ${event} hook is invalid.`);
+    }
   }
 }
 
@@ -193,4 +285,55 @@ export async function installCaptureExecutable(
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isOwnedCopilotHook(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const hook = value as Record<string, unknown>;
+  const environment = hook["env"];
+  return Boolean(
+    environment &&
+    typeof environment === "object" &&
+    !Array.isArray(environment) &&
+    (environment as Record<string, unknown>)["LINEAGE_PROVIDER"] === "github-copilot"
+  );
+}
+
+function validateTomlShape(content: string): void {
+  let continuation = 0;
+  for (const sourceLine of content.split(/\r?\n/)) {
+    const line = sourceLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (continuation === 0 && /^\[\[?[A-Za-z0-9_.-]+\]?\]$/.test(line)) continue;
+    if (continuation === 0 && !/^[A-Za-z0-9_.-]+\s*=/.test(line)) {
+      throw new Error("Generated Codex TOML contains an invalid statement.");
+    }
+    continuation += bracketDelta(line);
+    if (continuation < 0) throw new Error("Generated Codex TOML has unbalanced brackets.");
+  }
+  if (continuation !== 0) throw new Error("Generated Codex TOML has unbalanced brackets.");
+}
+
+function bracketDelta(line: string): number {
+  let delta = 0;
+  let quoteCharacter = "";
+  let escaped = false;
+  for (const character of line) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quoteCharacter) {
+      escaped = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quoteCharacter = quoteCharacter === character ? "" : quoteCharacter || character;
+      continue;
+    }
+    if (quoteCharacter) continue;
+    if (character === "[" || character === "{") delta += 1;
+    if (character === "]" || character === "}") delta -= 1;
+  }
+  return delta;
 }

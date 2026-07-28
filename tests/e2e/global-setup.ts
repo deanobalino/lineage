@@ -19,6 +19,11 @@ export default async function setup() {
     "export const payload = \"<img src=x onerror=window.__lineageXss=1>\";\n",
     "utf8"
   );
+  await writeFile(
+    join(hostileRepository, "src/removed.ts"),
+    "export const removed = \"available only at the merge base\";\n",
+    "utf8"
+  );
   await git.run(hostileRepository, ["add", "."]);
   await git.run(hostileRepository, ["commit", "-m", "Add <script>window.__lineageXss=1</script>"]);
   await git.run(hostileRepository, ["switch", "-c", "review/hostile"]);
@@ -27,6 +32,7 @@ export default async function setup() {
     "export const payload = \"<svg onload=window.__lineageXss=2>\";\n",
     "utf8"
   );
+  await git.run(hostileRepository, ["rm", "src/removed.ts"]);
   await git.run(hostileRepository, ["add", "."]);
   await git.run(hostileRepository, ["commit", "-m", "Change <img src=x onerror=window.__lineageXss=3>"]);
   const config: ServerConfig = {

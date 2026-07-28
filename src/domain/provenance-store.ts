@@ -1,3 +1,4 @@
+import { createReadStream } from "node:fs";
 import {
   appendFile,
   mkdir,
@@ -10,6 +11,9 @@ import {
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
+import { createInterface } from "node:readline";
+import { readBoundedTextFile } from "../shared/path-safety.js";
+import { serializeByKey } from "../shared/serialization.js";
 import {
   decodeLineageEvent,
   decodeProvenanceSession,
@@ -17,25 +21,96 @@ import {
   encodeProvenanceSession
 } from "./codec.js";
 import type { LineageEvent, ProvenanceSession } from "./models.js";
+import { MAX_SESSION_BYTES, MAX_SESSION_FILES } from "./limits.js";
 import { commitsMatch, compareEvents } from "./stable.js";
 
 const locks = new Map<string, Promise<void>>();
+const eventIndexCache = new Map<string, EventIndex>();
 
-async function serialized<T>(key: string, operation: () => Promise<T>): Promise<T> {
-  const previous = locks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const chain = previous.then(() => current);
-  locks.set(key, chain);
-  await previous;
+interface FileFingerprint {
+  exists: boolean;
+  size: string;
+  mtimeNs: string;
+  ctimeNs: string;
+  inode: string;
+}
+
+interface EventIndexMetadata {
+  version: 1;
+  fingerprint: FileFingerprint;
+  count: number;
+}
+
+interface EventIndex {
+  fingerprint: FileFingerprint;
+  ids: Set<string>;
+}
+
+async function fingerprint(path: string): Promise<FileFingerprint> {
   try {
-    return await operation();
-  } finally {
-    release();
-    if (locks.get(key) === chain) locks.delete(key);
+    const value = await stat(path, { bigint: true });
+    return {
+      exists: true,
+      size: String(value.size),
+      mtimeNs: String(value.mtimeNs),
+      ctimeNs: String(value.ctimeNs),
+      inode: String(value.ino)
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { exists: false, size: "0", mtimeNs: "0", ctimeNs: "0", inode: "0" };
+    }
+    throw error;
   }
+}
+
+function sameFingerprint(left: FileFingerprint, right: FileFingerprint): boolean {
+  return (
+    left.exists === right.exists &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.inode === right.inode
+  );
+}
+
+async function readLines(path: string, visit: (line: string) => void): Promise<void> {
+  const input = createReadStream(path, { encoding: "utf8" });
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) visit(line);
+  } finally {
+    lines.close();
+    input.destroy();
+  }
+}
+
+async function scanEventIds(path: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    await readLines(path, (line) => {
+      if (!line.trim()) return;
+      try {
+        const event = decodeLineageEvent(JSON.parse(line) as unknown);
+        if (event) ids.add(event.id);
+      } catch {
+        // Malformed legacy lines are ignored just as they are by events().
+      }
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  return ids;
+}
+
+async function scanIndexedIds(path: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  await readLines(path, (line) => {
+    const id = JSON.parse(line) as unknown;
+    if (typeof id !== "string" || !id) throw new Error("Event ID index is invalid.");
+    ids.add(id);
+  });
+  return ids;
 }
 
 async function flushDirectory(path: string): Promise<void> {
@@ -70,11 +145,15 @@ export async function atomicWrite(path: string, data: string | Buffer, mode = 0o
 export class ProvenanceStore {
   readonly provenanceDirectory: string;
   readonly eventsFile: string;
+  readonly eventIdsFile: string;
+  readonly eventIndexFile: string;
   readonly sessionsDirectory: string;
 
   constructor(readonly repoRoot: string) {
     this.provenanceDirectory = join(repoRoot, ".lineage", "provenance");
     this.eventsFile = join(this.provenanceDirectory, "events.jsonl");
+    this.eventIdsFile = join(this.provenanceDirectory, "event-ids.jsonl");
+    this.eventIndexFile = join(this.provenanceDirectory, "event-index.json");
     this.sessionsDirectory = join(this.provenanceDirectory, "sessions");
   }
 
@@ -107,14 +186,125 @@ export class ProvenanceStore {
     return this.events();
   }
 
+  async boundedEvents(
+    maxEvents: number
+  ): Promise<{ events: LineageEvent[]; truncated: boolean }> {
+    const events: LineageEvent[] = [];
+    let total = 0;
+    try {
+      await readLines(this.eventsFile, (line) => {
+        if (!line.trim()) return;
+        try {
+          const event = decodeLineageEvent(JSON.parse(line) as unknown);
+          if (!event) return;
+          total += 1;
+          events.push(event);
+          if (events.length > maxEvents * 2) events.splice(0, maxEvents);
+        } catch {
+          // Malformed legacy lines are ignored.
+        }
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return {
+      events: events.slice(-maxEvents).sort(compareEvents),
+      truncated: total > maxEvents
+    };
+  }
+
   async append(event: LineageEvent): Promise<"appended" | "duplicate"> {
-    return serialized(this.eventsFile, async () => {
+    return serializeByKey(locks, this.eventsFile, async () => {
       await this.ensureDirectories();
-      if ((await this.events()).some((existing) => existing.id === event.id)) return "duplicate";
+      let index = await this.#eventIndex();
+      let before = await fingerprint(this.eventsFile);
+      if (!sameFingerprint(index.fingerprint, before)) {
+        index = await this.#rebuildEventIndex();
+        before = index.fingerprint;
+      }
+      if (index.ids.has(event.id)) return "duplicate";
       const line = `${JSON.stringify(encodeLineageEvent(event))}\n`;
       await appendFile(this.eventsFile, line, { encoding: "utf8", mode: 0o600, flush: true });
+      const after = await fingerprint(this.eventsFile);
+      const expectedSize = BigInt(before.size) + BigInt(Buffer.byteLength(line));
+      const stableAppend =
+        after.exists &&
+        BigInt(after.size) === expectedSize &&
+        (!before.exists || before.inode === after.inode);
+      if (!stableAppend) {
+        await this.#rebuildEventIndex();
+        return "appended";
+      }
+      index.ids.add(event.id);
+      await appendFile(this.eventIdsFile, `${JSON.stringify(event.id)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+        flush: true
+      });
+      await this.#writeEventIndexMetadata(after, index.ids.size);
+      index.fingerprint = after;
+      eventIndexCache.set(this.eventsFile, index);
       return "appended";
     });
+  }
+
+  async #eventIndex(): Promise<EventIndex> {
+    const current = await fingerprint(this.eventsFile);
+    const cached = eventIndexCache.get(this.eventsFile);
+    if (cached && sameFingerprint(cached.fingerprint, current)) return cached;
+    try {
+      const metadata = JSON.parse(
+        await readFile(this.eventIndexFile, "utf8")
+      ) as EventIndexMetadata;
+      if (
+        metadata.version !== 1 ||
+        !sameFingerprint(metadata.fingerprint, current)
+      ) {
+        return this.#rebuildEventIndex();
+      }
+      const ids = await scanIndexedIds(this.eventIdsFile);
+      if (ids.size !== metadata.count) return this.#rebuildEventIndex();
+      const index = { fingerprint: current, ids };
+      eventIndexCache.set(this.eventsFile, index);
+      return index;
+    } catch {
+      return this.#rebuildEventIndex();
+    }
+  }
+
+  async #rebuildEventIndex(): Promise<EventIndex> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const before = await fingerprint(this.eventsFile);
+      const ids = await scanEventIds(this.eventsFile);
+      const after = await fingerprint(this.eventsFile);
+      if (!sameFingerprint(before, after)) continue;
+      await atomicWrite(
+        this.eventIdsFile,
+        [...ids].map((id) => JSON.stringify(id)).join("\n") + (ids.size > 0 ? "\n" : ""),
+        0o600
+      );
+      await this.#writeEventIndexMetadata(after, ids.size);
+      const index = { fingerprint: after, ids };
+      eventIndexCache.set(this.eventsFile, index);
+      return index;
+    }
+    throw new Error("Events changed repeatedly while rebuilding the event ID index.");
+  }
+
+  async #writeEventIndexMetadata(
+    eventsFingerprint: FileFingerprint,
+    count: number
+  ): Promise<void> {
+    const metadata: EventIndexMetadata = {
+      version: 1,
+      fingerprint: eventsFingerprint,
+      count
+    };
+    await atomicWrite(
+      this.eventIndexFile,
+      `${JSON.stringify(metadata, null, 2)}\n`,
+      0o600
+    );
   }
 
   async sessions(): Promise<ProvenanceSession[]> {
@@ -124,17 +314,29 @@ export class ProvenanceStore {
     } catch {
       return [];
     }
-    const sessions = await Promise.all(
-      names
-        .filter((name) => name.endsWith(".json"))
-        .map(async (name) => {
+    const candidates = names
+      .filter((name) => name.endsWith(".json"))
+      .sort()
+      .slice(0, MAX_SESSION_FILES);
+    const sessions: Array<ProvenanceSession | undefined> = [];
+    for (let index = 0; index < candidates.length; index += 32) {
+      sessions.push(
+        ...await Promise.all(
+          candidates.slice(index, index + 32).map(async (name) => {
           try {
-            return decodeProvenanceSession(JSON.parse(await readFile(join(this.sessionsDirectory, name), "utf8")) as unknown);
+            const source = await readBoundedTextFile(
+              join(this.sessionsDirectory, name),
+              MAX_SESSION_BYTES
+            );
+            if (!source || source.truncated) return undefined;
+            return decodeProvenanceSession(JSON.parse(source.text) as unknown);
           } catch {
             return undefined;
           }
-        })
-    );
+          })
+        )
+      );
+    }
     return sessions
       .filter((session): session is ProvenanceSession => Boolean(session))
       .sort((left, right) => left.sessionId.localeCompare(right.sessionId));
@@ -149,7 +351,7 @@ export class ProvenanceStore {
     const safeProvider = session.provider.replaceAll(/[^A-Za-z0-9._-]/g, "_");
     const safeSession = session.sessionId.replaceAll(/[^A-Za-z0-9._-]/g, "_");
     const path = join(this.sessionsDirectory, `${safeProvider}-${safeSession}.json`);
-    await serialized(path, () =>
+    await serializeByKey(locks, path, () =>
       atomicWrite(path, `${JSON.stringify(encodeProvenanceSession(session), null, 2)}\n`)
     );
     return path;
@@ -163,7 +365,9 @@ export class ProvenanceStore {
       throw new Error("Generated output must stay inside the provenance directory.");
     }
     const path = join(this.provenanceDirectory, relativePath);
-    await serialized(path, () => atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`));
+    await serializeByKey(locks, path, () =>
+      atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`)
+    );
     return path;
   }
 

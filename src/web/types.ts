@@ -1,3 +1,8 @@
+import type {
+  CaptureHealthContract,
+  Provider
+} from "../shared/api-contracts.js";
+
 export interface Repository {
   id: string;
   root: string;
@@ -72,7 +77,7 @@ export interface DiffHunk {
 }
 
 export interface SessionSummary {
-  provider: string;
+  provider: Provider;
   providerDisplayName: string;
   sessionId: string;
   prompt: string;
@@ -107,6 +112,7 @@ export interface LineExplanation {
   answer: string;
   confidence: number;
   provider?: string;
+  sessionProvider?: Provider;
   sessionId?: string;
   gitEvidence?: {
     commitSha: string;
@@ -144,15 +150,7 @@ export interface LineExplanation {
   suggestedQuestions: string[];
 }
 
-export interface CaptureHealth {
-  state: "off" | "installed" | "healthy" | "interrupted" | "pending" | "replaying" | "degraded";
-  pending: number;
-  claimed: number;
-  deadLetters: number;
-  incompleteEvidence: number;
-  lastSuccessAt?: string;
-  lastError?: string;
-}
+export type CaptureHealth = CaptureHealthContract;
 
 export interface SourceResponse {
   path: string;

@@ -34,10 +34,22 @@ function Protected({
   );
 }
 
+function intendedRoute(state: unknown): string | undefined {
+  return (
+    typeof state === "object" &&
+    state &&
+    "from" in state &&
+    typeof state.from === "string"
+  )
+    ? state.from
+    : undefined;
+}
+
 export function App() {
   const [auth, setAuth] = useState<"checking" | "authenticated" | "anonymous">(
     "checking"
   );
+  const location = useLocation();
 
   useEffect(() => {
     void api.session().then(
@@ -45,6 +57,11 @@ export function App() {
       () => setAuth("anonymous")
     );
   }, []);
+
+  useEffect(
+    () => api.onUnauthorized(() => setAuth("anonymous")),
+    []
+  );
 
   if (auth === "checking") {
     return (
@@ -60,7 +77,7 @@ export function App() {
       <Route
         path="/login"
         element={
-          auth === "authenticated" ? (
+          auth === "authenticated" && !intendedRoute(location.state) ? (
             <Navigate to="/repositories" replace />
           ) : (
             <LoginPage onLogin={() => setAuth("authenticated")} />
@@ -88,7 +105,7 @@ export function App() {
         <Route path="explore" element={<ExploreWorkspace />} />
         <Route path="capture" element={<CaptureWorkspace />} />
         <Route path="sessions" element={<SessionsWorkspace />} />
-        <Route path="sessions/:sessionId" element={<SessionWorkspace />} />
+        <Route path="sessions/:provider/:sessionId" element={<SessionWorkspace />} />
       </Route>
       <Route
         path="*"
@@ -102,4 +119,3 @@ export function App() {
     </Routes>
   );
 }
-

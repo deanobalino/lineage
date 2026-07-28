@@ -616,6 +616,40 @@ select {
   background: var(--color-edge);
 }
 
+.mobile-menu-only {
+  display: none;
+}
+
+.repository-controls {
+  display: grid;
+  gap: 20px;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+}
+
+.repository-controls label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.repository-controls select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-edge);
+  border-radius: 3px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.repository-controls .button {
+  justify-self: start;
+}
+
+.repository-controls .button svg {
+  width: 16px;
+}
+
 .review-workspace,
 .explore-workspace {
   display: grid;
@@ -894,6 +928,8 @@ select {
 }
 
 .diff-line code {
+  grid-column: 4;
+  grid-row: 1;
   padding-right: 40px;
   white-space: pre;
 }
@@ -938,6 +974,8 @@ select {
 .evidence-seam {
   position: sticky;
   right: 0;
+  grid-column: 4;
+  grid-row: 1;
   width: 22px;
   height: 100%;
   justify-self: end;
@@ -1604,6 +1642,15 @@ select {
     font-size: 15px;
   }
 
+  .button,
+  .icon-button {
+    min-height: 44px;
+  }
+
+  .icon-button {
+    min-width: 44px;
+  }
+
   .app-shell {
     grid-template-rows: 58px 38px minmax(0, 1fr);
   }
@@ -1627,6 +1674,10 @@ select {
 
   .command-rail > .icon-button:last-child {
     margin-left: auto;
+  }
+
+  .mobile-menu-only {
+    display: block;
   }
 
   .mobile-context {
@@ -1700,7 +1751,7 @@ select {
   }
 
   .files-button {
-    min-height: 34px;
+    min-height: 44px;
     margin: 5px 7px;
     padding-inline: 10px;
   }
@@ -1735,8 +1786,8 @@ select {
   .diff-line code,
   .source-line > span,
   .source-line code {
-    min-height: 29px;
-    padding-block: 5px;
+    min-height: 44px;
+    padding-block: 12px;
     font-size: 13px;
   }
 
@@ -1827,6 +1878,11 @@ select {
   .path-tree button,
   .path-tree summary {
     min-height: 46px;
+  }
+
+  .evidence-inspector summary,
+  .session-workspace summary {
+    min-height: 44px;
   }
 
   .focused-workspace {

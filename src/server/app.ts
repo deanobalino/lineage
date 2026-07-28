@@ -6,8 +6,8 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest
 } from "fastify";
-import { mkdir, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { mkdir, readFile, realpath, rm } from "node:fs/promises";
+import { join } from "node:path";
 import {
   agentTraceJsonl,
   agentTraceRecords,
@@ -17,13 +17,17 @@ import {
   explanationMarkdown,
   linkRepository,
   loadSessionEvidence,
+  MAX_GRAPH_EVENTS,
+  MAX_GRAPH_SESSIONS,
   ProvenanceStore,
   recoverCodexTranscripts,
   sessionEvidenceJson,
   sessionEvidenceMarkdown,
+  validateCodexTranscriptIdentity,
   type ProvenanceSession
 } from "../domain/index.js";
 import { writeCaptureClientConfig } from "../capture/client.js";
+import { atomicWrite } from "../domain/provenance-store.js";
 import {
   harnessStatus,
   installCaptureExecutable,
@@ -51,11 +55,30 @@ import {
   RepositoryError,
   RepositoryRegistry
 } from "./repositories/registry.js";
+import {
+  AnonymousSessionSchema,
+  AuthenticatedSessionSchema,
+  ErrorResponseSchema,
+  ExplainQuerySchema,
+  ExportQuerySchema,
+  FollowUpRequestSchema,
+  ProviderSchema,
+  RepositoryCaptureResponseSchema,
+  type ExplainQuery,
+  type ExportQuery,
+  type FollowUpRequest,
+  type RepositoryCaptureResponse
+} from "../shared/api-contracts.js";
+import { withinPath } from "../shared/path-safety.js";
+import { serializeByKey } from "../shared/serialization.js";
 
 const IdParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 128 }) });
 const SessionParams = Type.Intersect([
   IdParams,
-  Type.Object({ sessionId: Type.String({ minLength: 1, maxLength: 512 }) })
+  Type.Object({
+    provider: ProviderSchema,
+    sessionId: Type.String({ minLength: 1, maxLength: 512 })
+  })
 ]);
 
 export interface AppServices {
@@ -79,6 +102,49 @@ function bearerCookie(request: FastifyRequest): string | undefined {
 
 function safeName(value: string): string {
   return value.replaceAll(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
+}
+
+async function resolveLineMaterial(
+  git: GitService,
+  repoRoot: string,
+  selection: ExplainQuery
+): Promise<{ path: string; revision: string; source: string; blame: string }> {
+  if ((selection.side ?? "new") === "new") {
+    return {
+      path: selection.path,
+      revision: "HEAD",
+      source: await git.source(repoRoot, selection.path, "HEAD"),
+      blame: await git.blame(repoRoot, selection.path, selection.line, "HEAD")
+    };
+  }
+  if (!selection.base) {
+    throw new GitError("A base branch is required for an old-side line.", 1, "");
+  }
+  const changed = await git.changedFiles(repoRoot, selection.base);
+  const file = changed.find((candidate) => candidate.path === selection.path);
+  if (!file) {
+    throw new GitError("The requested path is not changed against the selected base.", 1, "");
+  }
+  const oldPath = file.previousPath ?? file.path;
+  if (selection.previousPath && selection.previousPath !== oldPath) {
+    throw new GitError("The previous path does not match the selected changed file.", 1, "");
+  }
+  const revision = await git.mergeBase(repoRoot, selection.base);
+  const source = (
+    await git.run(repoRoot, ["show", `${revision}:${oldPath}`])
+  ).stdout;
+  const blame = (
+    await git.run(repoRoot, [
+      "blame",
+      "--line-porcelain",
+      "-L",
+      `${selection.line},${selection.line}`,
+      revision,
+      "--",
+      oldPath
+    ])
+  ).stdout;
+  return { path: oldPath, revision, source, blame };
 }
 
 export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
@@ -199,7 +265,12 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
 
   app.post("/api/v1/auth/login", {
     schema: {
-      body: Type.Object({ token: Type.String({ minLength: 20, maxLength: 512 }) })
+      body: Type.Object({ token: Type.String({ minLength: 20, maxLength: 512 }) }),
+      response: {
+        200: AuthenticatedSessionSchema,
+        401: ErrorResponseSchema,
+        429: ErrorResponseSchema
+      }
     }
   }, async (request, reply) => {
     const key = request.ip;
@@ -210,7 +281,7 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
       });
     }
     const body = request.body as { token: string };
-    if (!credentials.verifyOperator(body.token)) {
+    if (!await credentials.verifyOperator(body.token)) {
       throttle.fail(key);
       return reply.code(401).send({ error: "invalid_token", message: "Token is invalid." });
     }
@@ -226,15 +297,19 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     return { authenticated: true as const, csrf: session.csrf, expiresAt: session.expiresAt };
   });
 
-  app.get("/api/v1/auth/session", async (request) => {
+  app.get("/api/v1/auth/session", {
+    schema: { response: { 200: AuthenticatedSessionSchema } }
+  }, async (request) => {
     const session = requestSessions.get(request)!;
-    return { authenticated: true, csrf: session.csrf, expiresAt: session.expiresAt };
+    return { authenticated: true as const, csrf: session.csrf, expiresAt: session.expiresAt };
   });
 
-  app.post("/api/v1/auth/logout", async (request, reply) => {
+  app.post("/api/v1/auth/logout", {
+    schema: { response: { 200: AnonymousSessionSchema } }
+  }, async (request, reply) => {
     sessions.revoke(bearerCookie(request));
     reply.clearCookie("lineage_session", { path: "/" });
-    return { authenticated: false };
+    return { authenticated: false as const };
   });
 
   app.post("/api/v1/auth/rotate", {
@@ -311,7 +386,7 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     schema: { params: IdParams }
   }, async (request) => {
     const record = await repository(request, registry);
-    const linked = await withMutation(repositoryMutations, record.id, async () => {
+    const linked = await serializeByKey(repositoryMutations, record.id, async () => {
       const result = await linkRepository(new ProvenanceStore(record.root));
       await registry.touch(record.id);
       return result;
@@ -326,7 +401,7 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     }
   }, async (request) => {
     const record = await repository(request, registry);
-    await withMutation(repositoryMutations, record.id, () =>
+    await serializeByKey(repositoryMutations, record.id, () =>
       git.switchBranch(record.root, (request.body as { branch: string }).branch)
     );
     return { currentBranch: await git.currentBranch(record.root) };
@@ -425,103 +500,116 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
   app.get("/api/v1/repositories/:id/explain", {
     schema: {
       params: IdParams,
-      querystring: Type.Object({
-        path: Type.String({ minLength: 1, maxLength: 4096 }),
-        line: Type.Integer({ minimum: 1, maximum: 1_000_000 }),
-        revision: Type.Optional(Type.String({ minLength: 1, maxLength: 512 }))
-      })
+      querystring: ExplainQuerySchema
     }
   }, async (request) => {
     const record = await repository(request, registry);
-    const query = request.query as { path: string; line: number; revision?: string };
-    const revision = query.revision ?? "HEAD";
-    const source = await git.source(record.root, query.path, revision);
-    const lineText = source.split(/\r?\n/)[query.line - 1] ?? "";
-    const blame = await git.blame(record.root, query.path, query.line, revision);
-    const evidence = parseBlame(blame, query.line, lineText);
+    const query = request.query as ExplainQuery;
+    const material = await resolveLineMaterial(git, record.root, {
+      path: query.path,
+      line: query.line,
+      ...(query.base ? { base: query.base } : {}),
+      ...(query.side ? { side: query.side } : {}),
+      ...(query.previousPath ? { previousPath: query.previousPath } : {})
+    });
+    const lineText = material.source.split(/\r?\n/)[query.line - 1] ?? "";
+    const evidence = parseBlame(material.blame, query.line, lineText);
     const sessions = await new ProvenanceStore(record.root).matchingSessions(
-      query.path,
+      material.path,
       query.line,
       evidence.commitSha
     );
-    return explainLine({
-      file: query.path,
+    const explanation = explainLine({
+      file: material.path,
       line: query.line,
       lineText,
       sessions,
       gitEvidence: evidence
     });
+    return sessions[0]
+      ? { ...explanation, sessionProvider: sessions[0].provider }
+      : explanation;
   });
 
   app.get("/api/v1/repositories/:id/sessions", {
     schema: { params: IdParams }
   }, async (request) => {
     const record = await repository(request, registry);
-    const safe = await safeSessions(
-      await new ProvenanceStore(record.root).sessions(),
-      [record.root, ...config.transcriptRoots]
-    );
+    const safe = await new ProvenanceStore(record.root).sessions();
     return {
       sessions: safe.map(sessionSummary)
     };
   });
 
-  app.get("/api/v1/repositories/:id/sessions/:sessionId", {
+  app.get("/api/v1/repositories/:id/sessions/:provider/:sessionId", {
     schema: { params: SessionParams }
   }, async (request, reply) => {
     const record = await repository(request, registry);
-    const params = request.params as { sessionId: string };
+    const params = request.params as { provider: string; sessionId: string };
     const store = new ProvenanceStore(record.root);
-    const all = await safeSessions(
-      await store.sessions(),
-      [record.root, ...config.transcriptRoots]
+    const stored = await store.sessions();
+    const candidate = stored.find(
+      (session) =>
+        session.provider === params.provider &&
+        session.sessionId === params.sessionId
     );
-    const session = all.find((candidate) => candidate.sessionId === params.sessionId);
-    if (!session) return reply.code(404).send({ error: "not_found", message: "Session not found." });
+    if (!candidate) return reply.code(404).send({ error: "not_found", message: "Session not found." });
+    const session = (await safeSessions(
+      [candidate],
+      record.root,
+      config.transcriptRoots
+    ))[0]!;
+    const eventPage = await store.boundedEvents(MAX_GRAPH_EVENTS);
     return {
       session,
       evidence: await loadSessionEvidence(session),
-      graph: buildProvenanceGraph(record.root, all, await store.events())
+      graph: await buildProvenanceGraph(
+        record.root,
+        stored,
+        eventPage.events,
+        undefined,
+        eventPage.truncated ? ["events"] : []
+      )
     };
   });
 
   app.get("/api/v1/repositories/:id/export", {
     schema: {
       params: IdParams,
-      querystring: Type.Object({
-        kind: Type.Union([
-          Type.Literal("session-markdown"),
-          Type.Literal("session-json"),
-          Type.Literal("agent-trace"),
-          Type.Literal("explanation")
-        ]),
-        session: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
-        path: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })),
-        line: Type.Optional(Type.Integer({ minimum: 1 })),
-        revision: Type.Optional(Type.String({ minLength: 1, maxLength: 512 }))
-      })
+      querystring: ExportQuerySchema
     }
   }, async (request, reply) => {
     const record = await repository(request, registry);
-    const query = request.query as {
-      kind: "session-markdown" | "session-json" | "agent-trace" | "explanation";
-      session?: string;
-      path?: string;
-      line?: number;
-      revision?: string;
-    };
+    const query = request.query as ExportQuery;
     const store = new ProvenanceStore(record.root);
-    const all = await safeSessions(
-      await store.sessions(),
-      [record.root, ...config.transcriptRoots]
-    );
+    const stored = await store.sessions();
     if (query.kind === "agent-trace") {
+      const all = await safeSessions(
+        stored.slice(0, MAX_GRAPH_SESSIONS),
+        record.root,
+        config.transcriptRoots
+      );
       return download(reply, `${safeName(record.name)}-agent-trace.jsonl`, "application/x-ndjson",
         agentTraceJsonl(await agentTraceRecords(record.root, all)));
     }
     if (query.kind === "session-markdown" || query.kind === "session-json") {
-      const session = all.find((candidate) => candidate.sessionId === query.session);
-      if (!session) return reply.code(404).send({ error: "not_found", message: "Session not found." });
+      if (!query.provider || !query.session) {
+        return reply.code(400).send({
+          error: "invalid_request",
+          message: "Provider and session are required."
+        });
+      }
+      const candidate = stored.find(
+        (session) =>
+          session.provider === query.provider &&
+          session.sessionId === query.session
+      );
+      if (!candidate) return reply.code(404).send({ error: "not_found", message: "Session not found." });
+      const session = (await safeSessions(
+        [candidate],
+        record.root,
+        config.transcriptRoots
+      ))[0]!;
       const evidence = await loadSessionEvidence(session);
       const markdown = query.kind === "session-markdown";
       return download(
@@ -534,18 +622,22 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     if (!query.path || !query.line) {
       return reply.code(400).send({ error: "invalid_request", message: "Path and line are required." });
     }
-    const revision = query.revision ?? "HEAD";
-    const source = await git.source(record.root, query.path, revision);
-    const lineText = source.split(/\r?\n/)[query.line - 1] ?? "";
-    const blame = await git.blame(record.root, query.path, query.line, revision);
-    const evidence = parseBlame(blame, query.line, lineText);
-    const matching = await store.matchingSessions(query.path, query.line, evidence.commitSha);
+    const material = await resolveLineMaterial(git, record.root, {
+      path: query.path,
+      line: query.line,
+      ...(query.base ? { base: query.base } : {}),
+      ...(query.side ? { side: query.side } : {}),
+      ...(query.previousPath ? { previousPath: query.previousPath } : {})
+    });
+    const lineText = material.source.split(/\r?\n/)[query.line - 1] ?? "";
+    const evidence = parseBlame(material.blame, query.line, lineText);
+    const matching = await store.matchingSessions(material.path, query.line, evidence.commitSha);
     return download(
       reply,
-      `${safeName(query.path)}-${query.line}-explanation.md`,
+      `${safeName(material.path)}-${query.line}-explanation.md`,
       "text/markdown; charset=utf-8",
       explanationMarkdown(explainLine({
-        file: query.path,
+        file: material.path,
         line: query.line,
         lineText,
         sessions: matching,
@@ -563,8 +655,11 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
   app.get("/api/v1/capture/status", async () => capture.health());
 
   app.get("/api/v1/repositories/:id/capture", {
-    schema: { params: IdParams }
-  }, async (request) => {
+    schema: {
+      params: IdParams,
+      response: { 200: RepositoryCaptureResponseSchema }
+    }
+  }, async (request): Promise<RepositoryCaptureResponse> => {
     const record = await repository(request, registry);
     return {
       harnesses: await Promise.all([
@@ -591,19 +686,38 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     const source = process.env["LINEAGE_CAPTURE_EXECUTABLE"] ??
       join(process.cwd(), "dist", "lineage-capture.mjs");
     const executable = await installCaptureExecutable(source, config.stateDirectory);
-    const token = await credentials.rotateCapture();
-    await writeCaptureClientConfig(config.stateDirectory, {
-      version: 1,
-      endpoint: `http://${config.captureHost}:${config.capturePort}/api/v1/capture`,
-      token,
-      outboxDirectory: join(config.stateDirectory, "capture-outbox"),
-      baselineDirectory: join(config.stateDirectory, "capture-baselines")
-    });
     const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(executable)}`;
-    return {
-      installed: await installHarness(record.root, provider, command),
-      health: await capture.health()
-    };
+    const clientPath = join(config.stateDirectory, "capture-client.json");
+    const previousClient = await readFile(clientPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    const rotation = await credentials.beginCaptureRotation();
+    try {
+      await writeCaptureClientConfig(config.stateDirectory, {
+        version: 1,
+        endpoint: `http://${config.captureHost}:${config.capturePort}/api/v1/capture`,
+        token: rotation.token,
+        outboxDirectory: join(config.stateDirectory, "capture-outbox"),
+        baselineDirectory: join(config.stateDirectory, "capture-baselines")
+      });
+      const installed = await installHarness(record.root, provider, command);
+      const health = await capture.health();
+      await credentials.commitCaptureRotation(rotation.id);
+      await credentials.finalizeCaptureRotation(rotation.id);
+      return {
+        installed,
+        health
+      };
+    } catch (error) {
+      if (previousClient) {
+        await atomicWrite(clientPath, previousClient, 0o600);
+      } else {
+        await rm(clientPath, { force: true });
+      }
+      await credentials.cancelCaptureRotation(rotation.id);
+      throw error;
+    }
   });
 
   app.post("/api/v1/capture/replay", async () => ({
@@ -635,33 +749,21 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
   app.post("/api/v1/repositories/:id/follow-up", {
     schema: {
       params: IdParams,
-      body: Type.Object({
-        path: Type.String({ minLength: 1, maxLength: 4096 }),
-        line: Type.Integer({ minimum: 1, maximum: 1_000_000 }),
-        question: Type.String({ minLength: 1, maxLength: 4_000 }),
-        revision: Type.Optional(Type.String({ minLength: 1, maxLength: 512 }))
-      })
+      body: FollowUpRequestSchema
     }
   }, async (request) => {
     const record = await repository(request, registry);
-    const body = request.body as {
-      path: string;
-      line: number;
-      question: string;
-      revision?: string;
-    };
-    const revision = body.revision ?? "HEAD";
-    const source = await git.source(record.root, body.path, revision);
-    const lineText = source.split(/\r?\n/)[body.line - 1] ?? "";
-    const rawBlame = await git.blame(record.root, body.path, body.line, revision);
-    const gitEvidence = parseBlame(rawBlame, body.line, lineText);
+    const body = request.body as FollowUpRequest;
+    const material = await resolveLineMaterial(git, record.root, body);
+    const lineText = material.source.split(/\r?\n/)[body.line - 1] ?? "";
+    const gitEvidence = parseBlame(material.blame, body.line, lineText);
     const matching = await new ProvenanceStore(record.root).matchingSessions(
-      body.path,
+      material.path,
       body.line,
       gitEvidence.commitSha
     );
     const explanation = explainLine({
-      file: body.path,
+      file: material.path,
       line: body.line,
       lineText,
       sessions: matching,
@@ -678,7 +780,9 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
   });
 
   try {
-    const webRoot = await realpath(join(process.cwd(), "dist", "web"));
+    const webRoot = await realpath(
+      process.env["LINEAGE_WEB_ROOT"] ?? join(process.cwd(), "dist", "web")
+    );
     await app.register(fastifyStatic, {
       root: webRoot,
       index: ["index.html"]
@@ -692,7 +796,8 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
       }
       return reply.code(404).send({ error: "not_found", message: "Route not found." });
     });
-  } catch {
+  } catch (error) {
+    if (process.env["NODE_ENV"] === "production") throw error;
     // Development and integration tests may run before the web build exists.
   }
 
@@ -736,38 +841,13 @@ function download(
     .send(body);
 }
 
-async function withMutation<T>(
-  locks: Map<string, Promise<void>>,
-  key: string,
-  operation: () => Promise<T>
-): Promise<T> {
-  const previous = locks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const chain = previous.then(() => current);
-  locks.set(key, chain);
-  await previous;
-  try {
-    return await operation();
-  } finally {
-    release();
-    if (locks.get(key) === chain) locks.delete(key);
-  }
-}
-
-function within(root: string, candidate: string): boolean {
-  const path = relative(root, candidate);
-  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
-}
-
 async function safeSessions(
   sessions: ProvenanceSession[],
+  repoRoot: string,
   configuredRoots: string[]
 ): Promise<ProvenanceSession[]> {
   const roots: string[] = [];
-  for (const root of configuredRoots) {
+  for (const root of [repoRoot, ...configuredRoots]) {
     try {
       roots.push(await realpath(root));
     } catch {
@@ -779,8 +859,13 @@ async function safeSessions(
       if (!session.transcriptPath) return session;
       try {
         const transcript = await realpath(session.transcriptPath);
-        if (roots.some((root) => within(root, transcript))) {
-          return { ...session, transcriptPath: transcript };
+        if (roots.some((root) => withinPath(root, transcript))) {
+          const validated = await validateCodexTranscriptIdentity(
+            transcript,
+            repoRoot,
+            session
+          );
+          if (validated) return { ...session, transcriptPath: validated };
         }
       } catch {
         // Missing or unsafe transcript evidence is represented as unavailable.

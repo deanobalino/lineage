@@ -10,9 +10,18 @@ export interface OperatorSession {
 export class SessionStore {
   readonly #sessions = new Map<string, OperatorSession>();
 
-  constructor(readonly ttlMs: number) {}
+  constructor(
+    readonly ttlMs: number,
+    readonly maxEntries = 1_024
+  ) {}
 
   create(now = Date.now()): OperatorSession {
+    this.#prune(now);
+    while (this.#sessions.size >= this.maxEntries) {
+      const oldest = this.#sessions.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.#sessions.delete(oldest);
+    }
     const session: OperatorSession = {
       id: randomBytes(32).toString("base64url"),
       csrf: randomBytes(24).toString("base64url"),
@@ -41,6 +50,12 @@ export class SessionStore {
   revokeAll(): void {
     this.#sessions.clear();
   }
+
+  #prune(now: number): void {
+    for (const [id, session] of this.#sessions) {
+      if (session.expiresAt <= now) this.#sessions.delete(id);
+    }
+  }
 }
 
 interface AttemptState {
@@ -53,12 +68,15 @@ export class LoginThrottle {
 
   constructor(
     readonly limit = 5,
-    readonly windowMs = 5 * 60 * 1000
+    readonly windowMs = 5 * 60 * 1000,
+    readonly maxEntries = 10_000
   ) {}
 
   allowed(key: string, now = Date.now()): boolean {
+    this.#prune(now);
     const state = this.#attempts.get(key);
     if (!state || state.resetAt <= now) {
+      this.#makeRoom();
       this.#attempts.set(key, { count: 0, resetAt: now + this.windowMs });
       return true;
     }
@@ -66,8 +84,10 @@ export class LoginThrottle {
   }
 
   fail(key: string, now = Date.now()): void {
+    this.#prune(now);
     const state = this.#attempts.get(key);
     if (!state || state.resetAt <= now) {
+      this.#makeRoom();
       this.#attempts.set(key, { count: 1, resetAt: now + this.windowMs });
     } else {
       state.count += 1;
@@ -76,5 +96,19 @@ export class LoginThrottle {
 
   clear(key: string): void {
     this.#attempts.delete(key);
+  }
+
+  #prune(now: number): void {
+    for (const [key, state] of this.#attempts) {
+      if (state.resetAt <= now) this.#attempts.delete(key);
+    }
+  }
+
+  #makeRoom(): void {
+    while (this.#attempts.size >= this.maxEntries) {
+      const oldest = this.#attempts.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.#attempts.delete(oldest);
+    }
   }
 }

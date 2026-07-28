@@ -158,7 +158,3 @@ export function validateEnvelope(value: unknown): CaptureEnvelope {
   }
   return value as CaptureEnvelope;
 }
-
-export function isLifecycleBoundary(envelope: CaptureEnvelope): boolean {
-  return envelope.eventType === "session_start" || envelope.eventType === "session_stop";
-}

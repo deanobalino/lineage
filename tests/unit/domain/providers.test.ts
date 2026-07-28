@@ -4,6 +4,7 @@ import {
   canonicalEventType,
   canonicalEvent,
 } from "../../../src/domain/provider-adapters.js";
+import { linkEvents } from "../../../src/domain/linker.js";
 
 describe("provider adapters", () => {
   it("canonicalizes Codex camelCase aliases without losing native payload", () => {
@@ -50,5 +51,30 @@ describe("provider adapters", () => {
       "session_stop",
     );
     expect(canonicalEventType("codex", "Stop")).toBe("session_stop");
+  });
+
+  it("normalizes permission requests and failed tool completions", () => {
+    expect(canonicalEventType("codex", "PermissionRequest")).toBe(
+      "permission_request",
+    );
+    expect(canonicalEventType("github-copilot", "PostToolUseFailure")).toBe(
+      "post_tool_use",
+    );
+
+    const request = canonicalEvent({
+      provider: "codex",
+      raw: {
+        hookEventName: "PermissionRequest",
+        sessionId: "permission-session",
+      },
+      payload: { toolName: "Bash" },
+      cwd: "/repo",
+      repoRoot: "/repo",
+      capturedAt: "2026-07-28T12:00:00Z",
+      ingestionId: "permission-event",
+    });
+    expect(linkEvents([request])[0]?.permissionRequests).toEqual([
+      "Permission requested for Bash",
+    ]);
   });
 });

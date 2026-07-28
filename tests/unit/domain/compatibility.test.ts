@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,16 +12,20 @@ import {
   explainLine,
   explanationMarkdown,
   linkEvents,
+  loadGraphSources,
   loadSessionEvidence,
+  MAX_TRANSCRIPT_LINES,
   ProvenanceStore,
   recoverCodexTranscripts,
   redact,
   sessionEvidenceJson,
   sessionEvidenceMarkdown,
+  validateCodexTranscriptIdentity,
   type GitLineEvidence,
   type LineageEvent,
   type ProvenanceSession
 } from "../../../src/domain/index.js";
+import { readBoundedContainedTextFile } from "../../../src/shared/path-safety.js";
 
 const fixtureRoot = fileURLToPath(
   new URL("../../fixtures/compatibility/", import.meta.url)
@@ -158,8 +162,8 @@ describe("compatibility semantics", () => {
     session.lineRanges = [
       { file: "src/retry.py", start: 1, end: 999, confidence: 0.7, label: "Recorded" }
     ];
-    const graph = buildProvenanceGraph(root, [session], await fixtureEvents());
-    const again = buildProvenanceGraph(root, [session], await fixtureEvents());
+    const graph = await buildProvenanceGraph(root, [session], await fixtureEvents());
+    const again = await buildProvenanceGraph(root, [session], await fixtureEvents());
 
     expect(again).toEqual(graph);
     expect(graph.nodes.filter((node) => node.kind === "line")).toHaveLength(200);
@@ -167,6 +171,51 @@ describe("compatibility semantics", () => {
     expect(graph.nodes.some((node) => node.kind === "constraint")).toBe(true);
     expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
     expect(new Set(graph.edges.map((edge) => edge.id)).size).toBe(graph.edges.length);
+  });
+
+  it("loads each safe graph source once and rejects escaping or symlinked ranges", async () => {
+    const root = await materialize();
+    const outside = join(root, "..", `lineage-secret-${Date.now()}.txt`);
+    temporaryRoots.push(outside);
+    await writeFile(outside, "host-secret\n", "utf8");
+    await symlink(outside, join(root, "src/linked-secret.txt"));
+    const session = linkEvents(await fixtureEvents())[0]!;
+    session.lineRanges = [
+      { file: "src/retry.py", start: 1, end: 1, confidence: 0.7, label: "First" },
+      { file: "src/retry.py", start: 2, end: 2, confidence: 0.7, label: "Second" },
+      { file: "../lineage-secret.txt", start: 1, end: 1, confidence: 0.7, label: "Escape" },
+      { file: "src/linked-secret.txt", start: 1, end: 1, confidence: 0.7, label: "Symlink" }
+    ];
+    let reads = 0;
+    const sources = await loadGraphSources(root, [session], async (...arguments_) => {
+      reads += 1;
+      return readBoundedContainedTextFile(...arguments_);
+    });
+    const graph = await buildProvenanceGraph(root, [session], [], sources);
+
+    expect(reads).toBe(1);
+    expect(graph.truncation?.reasons).toContain("unsafe_paths");
+    expect(graph.nodes.filter((node) => node.kind === "range").map((node) => node.filePath))
+      .toEqual(["src/retry.py", "src/retry.py"]);
+    expect(graph.nodes.some((node) => node.label.includes("linked-secret"))).toBe(false);
+    expect(graph.nodes.some((node) => node.label.includes("lineage-secret"))).toBe(false);
+  });
+
+  it("reports graph truncation instead of returning an unbounded session graph", async () => {
+    const root = await materialize();
+    const base = linkEvents(await fixtureEvents())[0]!;
+    const sessions = Array.from({ length: 501 }, (_, index): ProvenanceSession => ({
+      ...base,
+      sessionId: `bounded-graph-${index}`,
+      lineRanges: [],
+      filesEdited: []
+    }));
+
+    const graph = await buildProvenanceGraph(root, sessions);
+
+    expect(graph.truncation?.reasons).toContain("sessions");
+    expect(graph.truncation?.limits.sessions).toBe(500);
+    expect(graph.nodes.filter((node) => node.kind === "session")).toHaveLength(500);
   });
 
   it("redacts the frozen policy and loads provider transcript messages", async () => {
@@ -192,6 +241,56 @@ describe("compatibility semantics", () => {
     expect(evidence.timeline.map((event) => event.group)).toContain("Decision");
     expect(evidence.timeline.map((event) => event.group)).toContain("Constraint");
     expect(evidence.timeline.every((event) => !event.id.match(/^[0-9a-f-]{36}$/i))).toBe(true);
+  });
+
+  it("bounds transcript evidence and binds stored transcripts to repository identity", async () => {
+    const root = await materialize();
+    const other = await mkdtemp(join(tmpdir(), "lineage-other-repository-"));
+    temporaryRoots.push(other);
+    const transcript = join(root, "bounded-transcript.jsonl");
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        payload: { id: "bounded-session", cwd: other }
+      }),
+      ...Array.from({ length: MAX_TRANSCRIPT_LINES + 1 }, (_, index) =>
+        JSON.stringify({
+          type: "response_item",
+          payload: {
+            id: `message-${index}`,
+            type: "agent_message",
+            message: `message ${index}`
+          }
+        })
+      )
+    ];
+    await writeFile(transcript, `${lines.join("\n")}\n`, "utf8");
+    const session: ProvenanceSession = {
+      ...linkEvents(await fixtureEvents())[0]!,
+      sessionId: "bounded-session",
+      transcriptPath: transcript
+    };
+
+    expect(await validateCodexTranscriptIdentity(transcript, root, session)).toBeUndefined();
+    await writeFile(
+      transcript,
+      `${lines[0]!.replace(other, root)}\n${lines.slice(1).join("\n")}\n`,
+      "utf8"
+    );
+    expect(await validateCodexTranscriptIdentity(transcript, root, session)).toBe(transcript);
+    const evidence = await loadSessionEvidence(session);
+    expect(evidence.transcriptAvailable).toBe(true);
+    expect(evidence.transcriptTruncated).toBe(true);
+    expect(evidence.messages).toHaveLength(5_000);
+
+    const wrongSession = { ...session, sessionId: "another-session" };
+    expect(
+      await validateCodexTranscriptIdentity(transcript, root, wrongSession)
+    ).toBeUndefined();
+    const wrongProvider = { ...session, provider: "github-copilot" };
+    expect(
+      await validateCodexTranscriptIdentity(transcript, root, wrongProvider)
+    ).toBeUndefined();
   });
 
   it("uses direct ranges before commit fallback and produces bounded Git fallback", async () => {

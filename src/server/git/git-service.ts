@@ -151,9 +151,19 @@ export class GitService {
 
   defaultBase(branches: GitBranch[], current?: string): string | undefined {
     const available = new Set(branches.map((branch) => branch.name));
-    return ["origin/main", "origin/master", "main", "master"].find(
-      (name) => name !== current && available.has(name)
-    );
+    const currentUpstream = branches.find(
+      (branch) => !branch.remote && branch.name === current
+    )?.upstream;
+    const candidates = [
+      "origin/main",
+      "main",
+      "upstream/main",
+      "origin/master",
+      "master",
+      currentUpstream,
+      current
+    ].filter((name): name is string => Boolean(name));
+    return candidates.find((name) => available.has(name));
   }
 
   async changedFiles(repoRoot: string, base: string): Promise<ChangedFile[]> {
@@ -200,11 +210,17 @@ export class GitService {
       await this.run(repoRoot, ["diff", "--numstat", "-z", "--find-renames", range])
     ).stdout.split("\0");
     const counts = new Map<string, { additions: number; deletions: number; binary: boolean }>();
-    for (const record of numstat) {
+    for (let index = 0; index < numstat.length; index += 1) {
+      const record = numstat[index];
       if (!record) continue;
       const [added, deleted, path] = record.split("\t");
-      if (!path) continue;
-      counts.set(path, {
+      let countedPath = path;
+      if (!countedPath && numstat[index + 1] && numstat[index + 2]) {
+        countedPath = numstat[index + 2];
+        index += 2;
+      }
+      if (!countedPath) continue;
+      counts.set(countedPath, {
         additions: Number(added) || 0,
         deletions: Number(deleted) || 0,
         binary: added === "-" || deleted === "-"

@@ -1,18 +1,21 @@
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { readdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  readBoundedTextFile,
+  withinPath
+} from "../shared/path-safety.js";
+import {
+  MAX_TRANSCRIPT_BYTES,
+  MAX_TRANSCRIPT_LINES,
+  MAX_TRANSCRIPT_METADATA_BYTES
+} from "./limits.js";
 import type { ProvenanceSession } from "./models.js";
-import { providerDisplayName } from "./models.js";
+import { providerDisplayName, providers } from "./models.js";
 import { ProvenanceStore } from "./provenance-store.js";
 import { parseTranscriptLine } from "./evidence.js";
 import { stableId, uniqueSorted } from "./stable.js";
 
 const MAX_TRANSCRIPT_FILES = 5_000;
-const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
-
-function within(root: string, candidate: string): boolean {
-  const path = relative(root, candidate);
-  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
-}
 
 async function jsonlFiles(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -41,6 +44,64 @@ function object(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export async function validateCodexTranscriptIdentity(
+  candidate: string,
+  repoRoot: string,
+  session: Pick<ProvenanceSession, "provider" | "sessionId">
+): Promise<string | undefined> {
+  if (session.provider !== providers.codex.id) return undefined;
+  let canonicalTranscript: string;
+  let canonicalRepo: string;
+  try {
+    [canonicalTranscript, canonicalRepo] = await Promise.all([
+      realpath(candidate),
+      realpath(repoRoot)
+    ]);
+  } catch {
+    return undefined;
+  }
+  const transcript = await readBoundedTextFile(
+    canonicalTranscript,
+    MAX_TRANSCRIPT_METADATA_BYTES
+  );
+  if (!transcript || transcript.size > MAX_TRANSCRIPT_BYTES) return undefined;
+
+  let cursor = 0;
+  let lines = 0;
+  while (cursor <= transcript.text.length && lines < MAX_TRANSCRIPT_LINES) {
+    const newline = transcript.text.indexOf("\n", cursor);
+    const end = newline < 0 ? transcript.text.length : newline;
+    const line = transcript.text.slice(cursor, end);
+    lines += 1;
+    if (line.trim()) {
+      try {
+        const rootObject = object(JSON.parse(line) as unknown);
+        if (rootObject["type"] === "session_meta") {
+          const payload = object(rootObject["payload"]);
+          if (
+            payload["id"] !== session.sessionId ||
+            typeof payload["cwd"] !== "string"
+          ) {
+            return undefined;
+          }
+          try {
+            return (await realpath(payload["cwd"])) === canonicalRepo
+              ? canonicalTranscript
+              : undefined;
+          } catch {
+            return undefined;
+          }
+        }
+      } catch {
+        // Malformed non-metadata lines do not make a valid metadata record.
+      }
+    }
+    if (newline < 0) break;
+    cursor = newline + 1;
+  }
+  return undefined;
+}
+
 export async function recoverCodexTranscripts(
   repoRoot: string,
   configuredRoots: string[]
@@ -62,8 +123,10 @@ export async function recoverCodexTranscripts(
     for (const candidate of await jsonlFiles(root)) {
       scanned += 1;
       const canonical = await realpath(candidate);
-      if (!within(root, canonical) || (await stat(canonical)).size > MAX_TRANSCRIPT_BYTES) continue;
-      const text = await readFile(canonical, "utf8");
+      if (!withinPath(root, canonical)) continue;
+      const transcript = await readBoundedTextFile(canonical, MAX_TRANSCRIPT_BYTES);
+      if (!transcript || transcript.truncated) continue;
+      const text = transcript.text;
       const lines = text.split("\n").filter(Boolean);
       let sessionId: string | undefined;
       let cwd: string | undefined;

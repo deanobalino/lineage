@@ -44,7 +44,7 @@ export function buildCaptureApp(
     const token = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
       : "";
-    if (!credentials.verifyCapture(token)) {
+    if (!await credentials.verifyCapture(token)) {
       return reply.code(401).send({ error: "invalid_capture_credential" });
     }
     reply.header("cache-control", "no-store");

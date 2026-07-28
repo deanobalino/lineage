@@ -1,9 +1,12 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { LineExplanation, ProvenanceSession } from "./models.js";
 import type { SessionEvidence } from "./evidence.js";
 import { redact } from "./evidence.js";
-import { buildProvenanceGraph } from "./graph.js";
+import {
+  buildProvenanceGraph,
+  loadGraphSources,
+  type GraphSourceSet
+} from "./graph.js";
+import { MAX_GRAPH_SESSIONS } from "./limits.js";
 import { sha256 } from "./stable.js";
 
 export function sessionEvidenceMarkdown(bundle: SessionEvidence): string {
@@ -68,7 +71,7 @@ ${bundle.timeline
 
 ## Transcript
 
-${bundle.messages
+${bundle.transcriptTruncated ? "Transcript truncated at the configured evidence limit.\n\n" : ""}${bundle.messages
   .map((message) => `### ${message.title}\n\n${message.body}`)
   .join("\n\n")}
 
@@ -133,19 +136,15 @@ function traceId(session: ProvenanceSession): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-async function rangeHash(
-  repoRoot: string,
+function rangeHash(
+  sources: GraphSourceSet,
   file: string,
   start: number,
   end: number
-): Promise<string | undefined> {
-  try {
-    const lines = (await readFile(join(repoRoot, file), "utf8")).split(/\r?\n/);
-    if (start <= 0 || start > lines.length) return undefined;
-    return sha256(lines.slice(start - 1, Math.min(Math.max(end, start), lines.length)).join("\n"));
-  } catch {
-    return undefined;
-  }
+): string | undefined {
+  const lines = sources.lines.get(file);
+  if (!lines || start <= 0 || start > lines.length) return undefined;
+  return sha256(lines.slice(start - 1, Math.min(Math.max(end, start), lines.length)).join("\n"));
 }
 
 export async function agentTraceRecords(
@@ -153,11 +152,19 @@ export async function agentTraceRecords(
   sessions: ProvenanceSession[],
   timestamp = new Date().toISOString()
 ): Promise<AgentTraceRecord[]> {
-  const graph = buildProvenanceGraph(repoRoot, sessions);
+  const traceSessions = sessions.slice(0, MAX_GRAPH_SESSIONS);
+  const sources = await loadGraphSources(repoRoot, traceSessions);
+  const graph = await buildProvenanceGraph(repoRoot, sessions, [], sources);
   const records: AgentTraceRecord[] = [];
-  for (const session of sessions) {
+  for (const session of traceSessions) {
     const files: AgentTraceRecord["files"] = [];
-    const paths = [...new Set(session.lineRanges.map((range) => range.file))].sort();
+    const paths = [
+      ...new Set(
+        session.lineRanges
+          .map((range) => range.file)
+          .filter((path) => sources.allowedPaths.has(path))
+      )
+    ].sort();
     for (const path of paths) {
       const ranges = await Promise.all(
         session.lineRanges
@@ -168,7 +175,7 @@ export async function agentTraceRecords(
               start_line: range.start,
               end_line: range.end
             };
-            const contentHash = await rangeHash(repoRoot, path, range.start, range.end);
+            const contentHash = rangeHash(sources, path, range.start, range.end);
             if (contentHash) value.content_hash = contentHash;
             return value;
           })
@@ -187,6 +194,21 @@ export async function agentTraceRecords(
       });
     }
     if (files.length === 0) continue;
+    const lineageMetadata: Record<string, unknown> = {
+      session_id: session.sessionId,
+      provider: session.provider,
+      provider_display_name: session.providerDisplayName,
+      source: session.source,
+      turn_id: session.turnId ?? null,
+      tests_result: session.testsResult,
+      tools_used: session.toolsUsed,
+      files_edited: session.filesEdited,
+      graph_nodes: graph.nodes.length,
+      has_raw_telemetry_payload: session.rawTelemetryPayload !== undefined,
+      raw_payload_policy:
+        "Provider-specific raw payloads remain in .lineage/provenance/events.jsonl and session JSON."
+    };
+    if (graph.truncation) lineageMetadata["export_truncation"] = graph.truncation;
     const record: AgentTraceRecord = {
       version: "0.1.0",
       id: traceId(session),
@@ -194,20 +216,7 @@ export async function agentTraceRecords(
       tool: { name: session.provider, version: null },
       files,
       metadata: {
-        "dev.lineage": {
-          session_id: session.sessionId,
-          provider: session.provider,
-          provider_display_name: session.providerDisplayName,
-          source: session.source,
-          turn_id: session.turnId ?? null,
-          tests_result: session.testsResult,
-          tools_used: session.toolsUsed,
-          files_edited: session.filesEdited,
-          graph_nodes: graph.nodes.length,
-          has_raw_telemetry_payload: session.rawTelemetryPayload !== undefined,
-          raw_payload_policy:
-            "Provider-specific raw payloads remain in .lineage/provenance/events.jsonl and session JSON."
-        }
+        "dev.lineage": lineageMetadata
       }
     };
     if (session.commitSha) record.vcs = { type: "git", revision: session.commitSha };

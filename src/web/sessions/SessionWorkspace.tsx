@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import type { Provider } from "../../shared/api-contracts.js";
 import { api } from "../api.js";
 import { ErrorNotice, LoadingRows } from "../components/Ui.js";
 import { useAsync } from "../hooks.js";
@@ -8,10 +9,10 @@ function JsonBlock({ value }: { value: unknown }) {
 }
 
 export function SessionWorkspace() {
-  const { repositoryId = "", sessionId = "" } = useParams();
+  const { repositoryId = "", provider = "", sessionId = "" } = useParams();
   const detail = useAsync(
-    (signal) => api.sessionDetail(repositoryId, sessionId, signal),
-    [repositoryId, sessionId]
+    (signal) => api.sessionDetail(repositoryId, provider as Provider, sessionId, signal),
+    [repositoryId, provider, sessionId]
   );
   if (detail.loading) return <main className="focused-workspace"><LoadingRows count={14} /></main>;
   if (detail.error || !detail.data) {
@@ -31,10 +32,28 @@ export function SessionWorkspace() {
           <code>{session.sessionId}</code>
         </div>
         <div className="header-actions">
-          <a href={api.exportUrl(repositoryId, "session-markdown", { session: sessionId })}>
+          <a
+            href={api.exportUrl(repositoryId, "session-markdown", {
+              provider: provider as Provider,
+              session: sessionId
+            })}
+            onClick={(event) => {
+              event.preventDefault();
+              void api.download(event.currentTarget.href).catch(() => undefined);
+            }}
+          >
             Export Markdown
           </a>
-          <a href={api.exportUrl(repositoryId, "session-json", { session: sessionId })}>
+          <a
+            href={api.exportUrl(repositoryId, "session-json", {
+              provider: provider as Provider,
+              session: sessionId
+            })}
+            onClick={(event) => {
+              event.preventDefault();
+              void api.download(event.currentTarget.href).catch(() => undefined);
+            }}
+          >
             Export JSON
           </a>
         </div>
@@ -73,4 +92,3 @@ export function SessionWorkspace() {
     </main>
   );
 }
-

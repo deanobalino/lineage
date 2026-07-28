@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { writeCaptureClientConfig } from "../../../src/capture/client.js";
+import {
+  readCaptureClientConfig,
+  writeCaptureClientConfig
+} from "../../../src/capture/client.js";
+import type { CaptureEnvelope } from "../../../src/capture/envelope.js";
 import { buildApp, type BuiltApp } from "../../../src/server/app.js";
 import type { ServerConfig } from "../../../src/server/config.js";
 import { GitService } from "../../../src/server/git/git-service.js";
@@ -120,6 +124,67 @@ async function hook(
     child.stdin.end(JSON.stringify(input));
   });
   return { ...result, elapsed: performance.now() - started };
+}
+
+async function admin(
+  f: Awaited<ReturnType<typeof fixture>>,
+  args: string[]
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [executable, ...args], {
+      cwd: f.repo,
+      env: { ...process.env, LINEAGE_STATE_DIR: f.state },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => resolvePromise({
+      code: code ?? -1,
+      stdout: Buffer.concat(stdout).toString("utf8"),
+      stderr: Buffer.concat(stderr).toString("utf8")
+    }));
+  });
+}
+
+async function operatorAuth(built: BuiltApp): Promise<{ cookie: string; csrf: string }> {
+  const login = await built.app.inject({
+    method: "POST",
+    url: "/api/v1/auth/login",
+    headers: { host: "localhost" },
+    payload: { token: built.bootstrap.operatorToken }
+  });
+  const setCookie = login.headers["set-cookie"];
+  return {
+    cookie: (Array.isArray(setCookie) ? setCookie[0] : setCookie)!.split(";", 1)[0]!,
+    csrf: (login.json() as { csrf: string }).csrf
+  };
+}
+
+function captureEnvelope(
+  f: Awaited<ReturnType<typeof fixture>>,
+  ingestionId: string,
+  evidenceComplete = true
+): CaptureEnvelope {
+  return {
+    version: 1,
+    ingestionId,
+    capturedAt: new Date().toISOString(),
+    provider: "codex",
+    providerEventName: "UserPromptSubmit",
+    eventType: "prompt",
+    sessionId: ingestionId,
+    cwd: f.repo,
+    repoRoot: f.repo,
+    raw: { payload: { prompt: `Capture ${ingestionId}.` } },
+    environment: {},
+    evidenceComplete,
+    ...(evidenceComplete
+      ? {}
+      : { evidenceIssue: "The provider did not supply complete Git evidence." })
+  };
 }
 
 describe("capture subprocess and server", () => {
@@ -273,6 +338,62 @@ describe("capture subprocess and server", () => {
     await built.app.close();
   });
 
+  it("reports every server-owned capture health transition without premature recovery", async () => {
+    const f = await fixture();
+    const { built } = await startCapture(f);
+    const capture = built.services.capture;
+    expect(await capture.health()).toMatchObject({ state: "installed", pending: 0 });
+
+    await capture.outbox.enqueue(captureEnvelope(f, "health-pending"));
+    expect(await capture.health()).toMatchObject({ state: "pending", pending: 1 });
+
+    const originalIngest = capture.ingest.bind(capture);
+    let releaseIngest!: () => void;
+    const ingestReleased = new Promise<void>((resolvePromise) => {
+      releaseIngest = resolvePromise;
+    });
+    let markIngestStarted!: () => void;
+    const ingestStarted = new Promise<void>((resolvePromise) => {
+      markIngestStarted = resolvePromise;
+    });
+    capture.ingest = async (input: unknown) => {
+      markIngestStarted();
+      await ingestReleased;
+      return originalIngest(input);
+    };
+    const replay = capture.replay();
+    await ingestStarted;
+    expect(await capture.health()).toMatchObject({
+      state: "replaying",
+      pending: 0,
+      claimed: 1
+    });
+    releaseIngest();
+    await expect(replay).resolves.toEqual({ delivered: 1, deadLetters: 0 });
+    capture.ingest = originalIngest;
+    expect(await capture.health()).toMatchObject({ state: "healthy", pending: 0 });
+
+    await capture.interrupt(new Error("Temporary capture outage."));
+    expect(await capture.health()).toMatchObject({
+      state: "interrupted",
+      lastError: "Temporary capture outage."
+    });
+
+    await capture.ingest(captureEnvelope(f, "health-restored"));
+    expect(await capture.health()).toMatchObject({
+      state: "restored",
+      pending: 0
+    });
+
+    await capture.ingest(captureEnvelope(f, "health-incomplete", false));
+    expect(await capture.health()).toMatchObject({
+      state: "degraded",
+      incompleteEvidence: 1
+    });
+    await built.captureApp.close();
+    await built.app.close();
+  });
+
   it("handles parallel hook processes without corrupting the outbox or events file", async () => {
     const f = await fixture();
     const { built } = await startCapture(f);
@@ -292,5 +413,123 @@ describe("capture subprocess and server", () => {
     expect(new Set(events.map((event) => event.id)).size).toBe(events.length);
     await built.captureApp.close();
     await built.app.close();
+  });
+
+  it("runs capture diagnostics through the bundled command", async () => {
+    const f = await fixture();
+    const git = new GitService();
+    await writeFile(join(f.repo, "plain.txt"), "unattributed marker\n", "utf8");
+    await git.run(f.repo, ["add", "."]);
+    await git.run(f.repo, ["commit", "-m", "Add unattributed line"]);
+    const { built } = await startCapture(f);
+
+    const doctor = await admin(f, ["--doctor", f.repo]);
+    expect(doctor).toMatchObject({ code: 0, stderr: "" });
+    expect(doctor.stdout).toContain("lineage-capture doctor: ok");
+    expect(doctor.stdout).toContain("server_state=installed");
+
+    await hook(f, {
+      provider_event_name: "SessionStart",
+      session_id: "diagnostics",
+      payload: { prompt: "Change the diagnostic value." }
+    });
+    await writeFile(join(f.repo, "value.txt"), "diagnostic marker\n", "utf8");
+    await hook(f, {
+      provider_event_name: "Stop",
+      session_id: "diagnostics",
+      payload: { last_assistant_message: "Changed the diagnostic value." }
+    });
+    await git.run(f.repo, ["add", "."]);
+    await git.run(f.repo, ["commit", "-m", "Change diagnostic value"]);
+    const commit = (await git.run(f.repo, ["rev-parse", "HEAD"])).stdout.trim();
+
+    const linked = await admin(f, ["--link", f.repo]);
+    expect(linked).toMatchObject({ code: 0, stderr: "" });
+
+    const attributed = await admin(f, [
+      "--verify-line",
+      f.repo,
+      "value.txt",
+      "diagnostic marker"
+    ]);
+    expect(attributed).toEqual({
+      code: 0,
+      stderr: "",
+      stdout:
+        `line=1\ncommit=${commit}\nprovider=Codex\nsession=diagnostics\nconfidence=Recorded Codex provenance\n`
+    });
+
+    const unattributedCommit = (
+      await git.run(f.repo, ["log", "-1", "--format=%H", "--", "plain.txt"])
+    ).stdout.trim();
+    const unattributed = await admin(f, [
+      "--verify-line",
+      f.repo,
+      "plain.txt",
+      "unattributed marker"
+    ]);
+    expect(unattributed).toEqual({
+      code: 1,
+      stderr: "",
+      stdout:
+        `line=1\ncommit=${unattributedCommit}\nprovider=NONE\nsession=NONE\nconfidence=Inferred from Git history\n`
+    });
+
+    const recoveryRoot = join(f.root, "empty-transcripts");
+    await mkdir(recoveryRoot);
+    process.env["LINEAGE_TRANSCRIPT_ROOTS"] = recoveryRoot;
+    const recovered = await admin(f, ["--recover-codex", f.repo]);
+    delete process.env["LINEAGE_TRANSCRIPT_ROOTS"];
+    expect(recovered).toMatchObject({ code: 0, stderr: "" });
+    expect(recovered.stdout).toContain("imported 0 sessions");
+
+    await built.captureApp.close();
+    const offlineDoctor = await admin(f, ["--doctor", f.repo]);
+    expect(offlineDoctor.code).toBe(1);
+    expect(offlineDoctor.stderr).toContain("lineage-capture:");
+    await built.app.close();
+  });
+
+  it("keeps capture credentials valid when harness installation rolls back", async () => {
+    const f = await fixture();
+    const { built } = await startCapture(f);
+    const original = await readCaptureClientConfig(f.state);
+    await mkdir(join(f.repo, ".github/hooks"), { recursive: true });
+    await writeFile(join(f.repo, ".github/hooks/lineage-copilot.json"), "{invalid", "utf8");
+    const auth = await operatorAuth(built);
+    const repositories = await built.services.registry.list();
+    const response = await built.app.inject({
+      method: "POST",
+      url: `/api/v1/repositories/${repositories[0]!.id}/capture/install`,
+      headers: {
+        host: "localhost",
+        cookie: auth.cookie,
+        "x-csrf-token": auth.csrf
+      },
+      payload: { provider: "github-copilot" }
+    });
+    expect(response.statusCode).toBe(500);
+    expect((await readCaptureClientConfig(f.state)).token).toBe(original.token);
+    expect(await built.services.credentials.verifyCapture(original.token)).toBe(true);
+    expect(await readFile(join(f.repo, ".github/hooks/lineage-copilot.json"), "utf8"))
+      .toBe("{invalid");
+    await built.captureApp.close();
+    await built.app.close();
+  });
+
+  it("fails production startup when web assets are missing", async () => {
+    const f = await fixture();
+    const previousNodeEnv = process.env["NODE_ENV"];
+    const previousWebRoot = process.env["LINEAGE_WEB_ROOT"];
+    process.env["NODE_ENV"] = "production";
+    process.env["LINEAGE_WEB_ROOT"] = join(f.root, "missing-web-build");
+    try {
+      await expect(buildApp(f.config)).rejects.toThrow();
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
+      if (previousWebRoot === undefined) delete process.env["LINEAGE_WEB_ROOT"];
+      else process.env["LINEAGE_WEB_ROOT"] = previousWebRoot;
+    }
   });
 });

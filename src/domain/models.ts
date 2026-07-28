@@ -11,6 +11,7 @@ export const canonicalEventTypes = {
   prompt: "prompt",
   preToolUse: "pre_tool_use",
   postToolUse: "post_tool_use",
+  permissionRequest: "permission_request",
   assistantOptionsPresented: "assistant_options_presented",
   userDecision: "user_decision",
   permissionDecision: "permission_decision",

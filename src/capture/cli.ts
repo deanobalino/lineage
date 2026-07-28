@@ -9,6 +9,7 @@ import {
   recoverCodexTranscripts
 } from "../domain/index.js";
 import {
+  captureServerHealth,
   readCaptureClientConfig,
   wakeCapture,
   type CaptureClientConfig
@@ -90,17 +91,28 @@ async function runHook(): Promise<void> {
 async function runAdmin(command: string, args: string[]): Promise<number> {
   try {
     if (command === "--doctor") {
-      const config = await captureConfigOrDefault();
+      const config = await readCaptureClientConfig(stateDirectory);
       const root = resolveRepository(args[0] ?? process.cwd());
       const outbox = new CaptureOutbox(config.outboxDirectory);
       const started = performance.now();
       await mkdir(join(config.outboxDirectory, "probe"), { recursive: true, mode: 0o700 });
       const elapsed = Math.round(performance.now() - started);
       const status = await outbox.status();
+      const server = await captureServerHealth(config);
+      const localPending = status.pending + status.staging + status.claimed;
+      const healthy =
+        localPending === 0 &&
+        status.deadLetters === 0 &&
+        !status.quotaExceeded &&
+        server.pending === 0 &&
+        server.claimed === 0 &&
+        server.deadLetters === 0 &&
+        server.incompleteEvidence === 0 &&
+        !["off", "interrupted", "pending", "replaying", "degraded"].includes(server.state);
       process.stdout.write(
-        `lineage-capture doctor: ok ${root}\noutbox=${config.outboxDirectory}\npending=${status.pending + status.staging}\ndead_letters=${status.deadLetters}\nstorage_probe_ms=${elapsed}\n`
+        `lineage-capture doctor: ${healthy ? "ok" : "failed"} ${root}\noutbox=${config.outboxDirectory}\nlocal_pending=${localPending}\nlocal_dead_letters=${status.deadLetters}\nserver_state=${server.state}\nserver_pending=${server.pending + server.claimed}\nserver_dead_letters=${server.deadLetters}\nincomplete_evidence=${server.incompleteEvidence}\nstorage_probe_ms=${elapsed}\n`
       );
-      return 0;
+      return healthy ? 0 : 1;
     }
     if (command === "--link") {
       const root = resolveRepository(args[0] ?? process.cwd());
@@ -125,8 +137,16 @@ async function runAdmin(command: string, args: string[]): Promise<number> {
         return 1;
       }
       const sessions = await new ProvenanceStore(root).matchingSessions(args[1]!, index + 1);
+      const blame = spawnSync(
+        "git",
+        ["-C", root, "blame", "--line-porcelain", "-L", `${index + 1},${index + 1}`, "HEAD", "--", args[1]!],
+        { encoding: "utf8", timeout: 500 }
+      );
+      if (blame.status !== 0) throw new Error("git blame failed");
+      const commit = String(blame.stdout).split(/\s/, 1)[0] ?? "NONE";
+      const session = sessions[0];
       process.stdout.write(
-        `line=${index + 1}\nprovider=${sessions[0]?.providerDisplayName ?? "NONE"}\nsession=${sessions[0]?.sessionId ?? "NONE"}\n`
+        `line=${index + 1}\ncommit=${commit}\nprovider=${session?.providerDisplayName ?? "NONE"}\nsession=${session?.sessionId ?? "NONE"}\nconfidence=${session ? `Recorded ${session.providerDisplayName} provenance` : "Inferred from Git history"}\n`
       );
       return sessions.length > 0 ? 0 : 1;
     }

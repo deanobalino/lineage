@@ -18,8 +18,7 @@
         "Sources/Lineage/LineageApp.swift:144-173"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#persists verifier-only credentials and remembered repositories across restart"
       ],
       "status": "verified"
     },
@@ -32,8 +31,7 @@
         "Sources/Lineage/LineageApp.swift:675-695"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#forgets only registry state, re-adds existing provenance, and creates a real demo"
       ],
       "status": "verified"
     },
@@ -45,8 +43,7 @@
         "Sources/Lineage/LineageApp.swift:341-366"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#serves Review, Explore, explanations, branch changes, and exports from real Git"
       ],
       "status": "verified"
     },
@@ -58,8 +55,7 @@
         "Sources/LineageCore/DemoRepositoryGenerator.swift:6-183"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#forgets only registry state, re-adds existing provenance, and creates a real demo"
       ],
       "status": "verified"
     },
@@ -71,7 +67,7 @@
         "Sources/LineageCore/GitService.swift:46-69"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts"
+        "tests/integration/server/app.test.ts#serves Review, Explore, explanations, branch changes, and exports from real Git"
       ],
       "status": "verified"
     },
@@ -84,7 +80,7 @@
         "Sources/LineageCore/GitService.swift:119-147"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts"
+        "tests/unit/server/git.test.ts#uses the current branch as the empty comparison fallback"
       ],
       "status": "verified"
     },
@@ -96,7 +92,7 @@
         "Sources/LineageCore/GitService.swift:149-180"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts"
+        "tests/unit/server/git.test.ts#creates a local tracking branch from a remote ref"
       ],
       "status": "verified"
     },
@@ -109,7 +105,7 @@
         "Sources/LineageCore/GitService.swift:312-348"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts"
+        "tests/unit/server/git.test.ts#reads blame from the base revision after a line is deleted"
       ],
       "status": "verified"
     },
@@ -122,8 +118,7 @@
         "Sources/LineageCore/Models.swift:654-685"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/server/git.test.ts#attributes edited rename churn and counts feature-only commits"
       ],
       "status": "verified"
     },
@@ -136,8 +131,7 @@
         "Sources/Lineage/Views.swift:794-905"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/server/git.test.ts#attributes edited rename churn and counts feature-only commits"
       ],
       "status": "verified"
     },
@@ -150,8 +144,7 @@
         "Sources/LineageCore/GitService.swift:245-309"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#serves Review, Explore, explanations, branch changes, and exports from real Git"
       ],
       "status": "verified"
     },
@@ -163,8 +156,7 @@
         "Sources/Lineage/Views.swift:1373-1621"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#reviews a real branch and opens its recorded evidence"
       ],
       "status": "verified"
     },
@@ -176,8 +168,7 @@
         "Sources/LineageCore/ExplanationEngine.swift:111-216"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#serves Review, Explore, explanations, branch changes, and exports from real Git"
       ],
       "status": "verified"
     },
@@ -190,7 +181,7 @@
         "Sources/Lineage/Views.swift:1067-1236"
       ],
       "replacementEvidence": [
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#operates repository controls and evidence workflows at every viewport"
       ],
       "status": "verified"
     },
@@ -203,7 +194,7 @@
         "Sources/Lineage/Views.swift:1295-1371"
       ],
       "replacementEvidence": [
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#operates repository controls and evidence workflows at every viewport"
       ],
       "status": "verified"
     },
@@ -216,7 +207,7 @@
         "Sources/Lineage/LineageApp.swift:368-386"
       ],
       "replacementEvidence": [
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#operates repository controls and evidence workflows at every viewport"
       ],
       "status": "verified"
     },
@@ -229,8 +220,7 @@
         "Tests/LineageCoreTests/ProvenanceGraphTests.swift:72-103"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#uses direct ranges before commit fallback and produces bounded Git fallback"
       ],
       "status": "verified"
     },
@@ -242,8 +232,7 @@
         "Sources/LineageCore/ExplanationEngine.swift:8-92"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#uses direct ranges before commit fallback and produces bounded Git fallback"
       ],
       "status": "verified"
     },
@@ -255,8 +244,7 @@
         "Sources/LineageCore/ExplanationEngine.swift:242-367"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#reduces out-of-order input deterministically and respects provider finalization"
       ],
       "status": "verified"
     },
@@ -269,8 +257,7 @@
         "Sources/Lineage/Views.swift:2659-2772"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#uses direct ranges before commit fallback and produces bounded Git fallback"
       ],
       "status": "verified"
     },
@@ -283,8 +270,7 @@
         "Sources/Lineage/LineageApp.swift:583-589"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#uses direct ranges before commit fallback and produces bounded Git fallback"
       ],
       "status": "verified"
     },
@@ -298,8 +284,7 @@
         "tests/fixtures/compatibility/legacy/events.jsonl"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/models.test.ts",
-        "tests/unit/domain/store.test.ts"
+        "tests/unit/domain/store.test.ts#reads valid JSONL in deterministic file order and skips malformed lines"
       ],
       "status": "verified"
     },
@@ -312,8 +297,7 @@
         "tests/fixtures/compatibility/legacy/sessions/codex-legacy-session.json"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/models.test.ts",
-        "tests/unit/domain/store.test.ts"
+        "tests/unit/domain/models.test.ts#defaults historical session fields and retains unknown fields"
       ],
       "status": "verified"
     },
@@ -326,8 +310,7 @@
         "Sources/LineageCore/ProviderAdapters.swift:86-107"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/models.test.ts",
-        "tests/unit/domain/store.test.ts"
+        "tests/unit/domain/models.test.ts#preserves recursive unknown provider payload values"
       ],
       "status": "verified"
     },
@@ -339,7 +322,7 @@
         "Sources/LineageCore/ProvenanceLinker.swift:6-25"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts"
+        "tests/unit/domain/compatibility.test.ts#reduces out-of-order input deterministically and respects provider finalization"
       ],
       "status": "verified"
     },
@@ -351,7 +334,7 @@
         "Sources/LineageCore/ProvenanceLinker.swift:82-156"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts"
+        "tests/unit/domain/providers.test.ts#normalizes permission requests and failed tool completions"
       ],
       "status": "verified"
     },
@@ -363,7 +346,7 @@
         "Sources/LineageCore/ProvenanceLinker.swift:158-177"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts"
+        "tests/unit/domain/compatibility.test.ts#reduces out-of-order input deterministically and respects provider finalization"
       ],
       "status": "verified"
     },
@@ -375,7 +358,7 @@
         "Sources/LineageCore/ProvenanceGraph.swift:175-216"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts"
+        "tests/unit/domain/compatibility.test.ts#builds byte-stable graph identities with the 200-line expansion ceiling"
       ],
       "status": "verified"
     },
@@ -388,7 +371,7 @@
         "Sources/LineageCore/ProvenanceGraph.swift:218-307"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts"
+        "tests/unit/domain/compatibility.test.ts#builds byte-stable graph identities with the 200-line expansion ceiling"
       ],
       "status": "verified"
     },
@@ -400,8 +383,7 @@
         "Sources/LineageCore/SessionEvidence.swift:64-126"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#redacts the frozen policy and loads provider transcript messages"
       ],
       "status": "verified"
     },
@@ -414,8 +396,7 @@
         "tests/fixtures/compatibility/transcripts/codex-session.jsonl"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#redacts the frozen policy and loads provider transcript messages"
       ],
       "status": "verified"
     },
@@ -428,8 +409,7 @@
         "Sources/Lineage/Views.swift:2147-2202"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#operates repository controls and evidence workflows at every viewport"
       ],
       "status": "verified"
     },
@@ -441,8 +421,7 @@
         "Sources/LineageCore/MarkdownExporter.swift:3-103"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#exports redacted Markdown, JSON, and deterministic Agent Trace JSONL"
       ],
       "status": "verified"
     },
@@ -454,8 +433,7 @@
         "Sources/LineageCore/SessionEvidence.swift:195-265"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#exports redacted Markdown, JSON, and deterministic Agent Trace JSONL"
       ],
       "status": "verified"
     },
@@ -467,8 +445,7 @@
         "Sources/LineageCore/AgentTraceExporter.swift:72-189"
       ],
       "replacementEvidence": [
-        "tests/unit/domain/compatibility.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/unit/domain/compatibility.test.ts#exports redacted Markdown, JSON, and deterministic Agent Trace JSONL"
       ],
       "status": "verified"
     },
@@ -481,8 +458,7 @@
         "Sources/Lineage/LineageApp.swift:517-557"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/unit/capture/outbox.test.ts#preserves unrelated Codex and Copilot configuration and remains idempotent"
       ],
       "status": "verified"
     },
@@ -494,8 +470,7 @@
         "Sources/LineageCore/ProviderAdapters.swift:3-128"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/integration/capture/capture.test.ts#ingests idempotently and preserves Codex and Copilot finalization semantics"
       ],
       "status": "verified"
     },
@@ -508,8 +483,7 @@
         "tests/fixtures/compatibility/legacy/events.jsonl"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/integration/capture/capture.test.ts#ingests idempotently and preserves Codex and Copilot finalization semantics"
       ],
       "status": "verified"
     },
@@ -521,8 +495,7 @@
         "Sources/lineage-capture/main.swift:67-134"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/unit/capture/outbox.test.ts#stages raw input outside the replay set and finalizes it atomically"
       ],
       "status": "verified"
     },
@@ -534,8 +507,7 @@
         "Sources/lineage-capture/main.swift:136-230"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/integration/capture/capture.test.ts#runs capture diagnostics through the bundled command"
       ],
       "status": "verified"
     },
@@ -547,8 +519,7 @@
         "docs/plans/2026-07-28-001-refactor-web-only-lineage-plan.md:527-543"
       ],
       "replacementEvidence": [
-        "tests/unit/capture/outbox.test.ts",
-        "tests/integration/capture/capture.test.ts"
+        "tests/integration/capture/capture.test.ts#replays queued events, dead-letters unregistered repositories, and reports health"
       ],
       "status": "verified"
     },
@@ -561,7 +532,7 @@
         "docs/plans/2026-07-28-001-refactor-web-only-lineage-plan.md:545-558"
       ],
       "replacementEvidence": [
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#reviews a real branch and opens its recorded evidence"
       ],
       "status": "verified"
     },
@@ -573,7 +544,7 @@
         "docs/plans/2026-07-28-001-refactor-web-only-lineage-plan.md:545-558"
       ],
       "replacementEvidence": [
-        "tests/e2e/web.spec.ts"
+        "tests/e2e/web.spec.ts#operates repository controls and evidence workflows at every viewport"
       ],
       "status": "verified"
     },
@@ -585,8 +556,7 @@
         "docs/plans/2026-07-28-001-refactor-web-only-lineage-plan.md:297-309"
       ],
       "replacementEvidence": [
-        "tests/integration/server/app.test.ts",
-        "tests/e2e/web.spec.ts"
+        "tests/integration/server/app.test.ts#rejects outside roots, symlink escapes, bad Host/Origin, missing CSRF, and old tokens"
       ],
       "status": "verified"
     },
@@ -598,7 +568,7 @@
         "docs/plans/2026-07-28-001-refactor-web-only-lineage-plan.md:575-587"
       ],
       "replacementEvidence": [
-        "docs/parity/cutover-report.md"
+        "docs/parity/cutover-report.md#Web-only cutover report"
       ],
       "status": "verified"
     }

@@ -6,7 +6,6 @@ import {
   ProvenanceStore
 } from "../../domain/index.js";
 import { atomicWrite } from "../../domain/provenance-store.js";
-import type { CaptureEnvelope } from "../../capture/envelope.js";
 import { validateEnvelope } from "../../capture/envelope.js";
 import { CaptureOutbox } from "../../capture/outbox.js";
 import type { RepositoryRegistry } from "../repositories/registry.js";
@@ -54,7 +53,7 @@ export class CaptureService {
   }
 
   async initialize(): Promise<void> {
-    await this.outbox.initialize();
+    await this.outbox.reconcile();
     try {
       const parsed = JSON.parse(await readFile(this.healthPath, "utf8")) as PersistedCaptureHealth;
       if (parsed.version === 1) this.#health = parsed;
@@ -101,7 +100,9 @@ export class CaptureService {
     if (event.eventType === "session_stop") await linkRepository(store);
     this.#health.lastAcknowledgedAt = new Date().toISOString();
     delete this.#health.lastError;
-    if (!envelope.evidenceComplete) this.#health.incompleteEvidence += 1;
+    if (result !== "duplicate" && !envelope.evidenceComplete) {
+      this.#health.incompleteEvidence += 1;
+    }
     await this.#saveHealth();
     return { id: event.id, duplicate: result === "duplicate" };
   }
@@ -113,15 +114,20 @@ export class CaptureService {
     await this.#saveHealth();
   }
 
-  async replay(maxItems = 100): Promise<{ delivered: number; deadLetters: number }> {
+  async replay(
+    maxItems = this.outbox.limits.maxItems
+  ): Promise<{ delivered: number; deadLetters: number }> {
     if (this.#replaying) return { delivered: 0, deadLetters: 0 };
     this.#replaying = true;
     let delivered = 0;
     let deadLetters = 0;
+    let attempted = 0;
     try {
-      while (delivered + deadLetters < maxItems) {
+      await this.outbox.prepareReplay();
+      while (attempted < maxItems) {
         const claim = await this.outbox.claimNext();
         if (!claim) break;
+        attempted += 1;
         try {
           await this.ingest(claim.envelope);
           await this.outbox.complete(claim);
@@ -134,9 +140,8 @@ export class CaptureService {
             await this.outbox.deadLetter(claim, message);
             deadLetters += 1;
           } else {
-            await this.outbox.retryLater(claim);
+            await this.outbox.retryLater(claim, message);
             await this.interrupt(error);
-            break;
           }
         }
       }
@@ -192,5 +197,21 @@ export class CaptureService {
 
   async #saveHealth(): Promise<void> {
     await atomicWrite(this.healthPath, `${JSON.stringify(this.#health, null, 2)}\n`, 0o600);
+  }
+}
+
+export async function safeReplay(
+  capture: Pick<CaptureService, "replay" | "interrupt">,
+  log: { error(value: unknown, message?: string): void }
+): Promise<void> {
+  try {
+    await capture.replay();
+  } catch (error) {
+    log.error({ err: error }, "capture replay failed; browser service remains available");
+    try {
+      await capture.interrupt(error);
+    } catch (healthError) {
+      log.error({ err: healthError }, "capture health persistence failed");
+    }
   }
 }

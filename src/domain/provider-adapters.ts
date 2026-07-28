@@ -85,6 +85,34 @@ function constraints(value: unknown): ExternalConstraint[] | undefined {
   });
 }
 
+function optionPayload(records: DecisionOption[]): Record<string, JsonValue>[] {
+  return records.map((record) => {
+    const value: Record<string, JsonValue> = {
+      id: record.id,
+      text: record.text
+    };
+    if (record.rationale) value["rationale"] = record.rationale;
+    return value;
+  });
+}
+
+function constraintPayload(
+  records: ExternalConstraint[]
+): Record<string, JsonValue>[] {
+  return records.map((record) => {
+    const value: Record<string, JsonValue> = {
+      id: record.id,
+      file_path: record.filePath,
+      summary: record.summary,
+      source: record.source
+    };
+    if (record.startLine !== undefined) value["start_line"] = record.startLine;
+    if (record.endLine !== undefined) value["end_line"] = record.endLine;
+    if (record.excerpt) value["excerpt"] = record.excerpt;
+    return value;
+  });
+}
+
 export function canonicalType(providerEventName: string): string {
   const normalized = providerEventName.replaceAll(/[_\s-]/g, "").toLowerCase();
   const mapping: Record<string, string> = {
@@ -93,6 +121,8 @@ export function canonicalType(providerEventName: string): string {
     prompt: canonicalEventTypes.prompt,
     pretooluse: canonicalEventTypes.preToolUse,
     posttooluse: canonicalEventTypes.postToolUse,
+    posttoolusefailure: canonicalEventTypes.postToolUse,
+    permissionrequest: canonicalEventTypes.permissionRequest,
     assistantoptionspresented: canonicalEventTypes.assistantOptionsPresented,
     userdecision: canonicalEventTypes.userDecision,
     permissiondecision: canonicalEventTypes.permissionDecision,
@@ -152,9 +182,11 @@ export function canonicalEvent(context: AdapterContext): LineageEvent {
   const testsDetected = payload["tests_detected"];
   if (Array.isArray(testsDetected)) canonicalPayload["tests_detected"] = testsDetected.filter((item): item is string => typeof item === "string");
   const decisionOptions = options(payload["options_presented"] ?? payload["optionsPresented"] ?? payload["alternatives"]);
-  if (decisionOptions) canonicalPayload["options_presented"] = decisionOptions as unknown as JsonValue;
+  if (decisionOptions) canonicalPayload["options_presented"] = optionPayload(decisionOptions);
   const externalConstraints = constraints(payload["external_constraints"] ?? payload["externalConstraints"] ?? payload["spec_references"] ?? payload["specReferences"]);
-  if (externalConstraints) canonicalPayload["external_constraints"] = externalConstraints as unknown as JsonValue;
+  if (externalConstraints) {
+    canonicalPayload["external_constraints"] = constraintPayload(externalConstraints);
+  }
   canonicalPayload["raw_provider_payload"] = json(payload) ?? {};
 
   const sessionId =

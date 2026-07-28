@@ -5,6 +5,7 @@ export * from "./explanation.js";
 export * from "./exports.js";
 export * from "./graph.js";
 export * from "./linker.js";
+export * from "./limits.js";
 export * from "./models.js";
 export * from "./provenance-store.js";
 export * from "./provider-adapters.js";

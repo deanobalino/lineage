@@ -7,8 +7,9 @@ import {
   rename,
   stat
 } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { atomicWrite } from "../../domain/provenance-store.js";
+import { withinPath } from "../../shared/path-safety.js";
 import type { GitService } from "../git/git-service.js";
 
 export interface RepositoryRecord {
@@ -34,11 +35,6 @@ export class RepositoryError extends Error {
     super(message);
     this.name = "RepositoryError";
   }
-}
-
-function within(root: string, candidate: string): boolean {
-  const path = relative(root, candidate);
-  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
 export class RepositoryRegistry {
@@ -108,7 +104,7 @@ export class RepositoryRegistry {
     const canonical = await this.canonicalAllowed(requestedPath);
     const gitRoot = await realpath(await this.git.root(canonical));
     this.assertAllowed(gitRoot);
-    if (canonical !== gitRoot && !within(gitRoot, canonical)) {
+    if (canonical !== gitRoot && !withinPath(gitRoot, canonical)) {
       throw new RepositoryError("Selected path does not resolve inside its Git repository.");
     }
     const existing = this.#state.repositories.find((record) => record.root === gitRoot);
@@ -191,7 +187,7 @@ export class RepositoryRegistry {
   }
 
   private assertAllowed(path: string): void {
-    if (!this.#allowedRoots.some((root) => within(root, path))) {
+    if (!this.#allowedRoots.some((root) => withinPath(root, path))) {
       throw new RepositoryError("Path is outside the configured repository roots.");
     }
   }

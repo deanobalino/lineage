@@ -1,4 +1,14 @@
 import type {
+  AnonymousSession,
+  AuthenticatedSession,
+  ExplainQuery,
+  ExportKind,
+  ExportQuery,
+  FollowUpRequest,
+  Provider,
+  RepositoryCaptureResponse
+} from "../shared/api-contracts.js";
+import type {
   CaptureHealth,
   Diff,
   LineExplanation,
@@ -22,12 +32,23 @@ export class ApiError extends Error {
 }
 
 let csrf = "";
+const unauthorizedListeners = new Set<() => void>();
 
-async function request<T>(
+function queryString(
+  values: Record<string, string | number | undefined>
+): URLSearchParams {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  return query;
+}
+
+async function response(
   path: string,
   init: RequestInit = {},
   signal?: AbortSignal
-): Promise<T> {
+): Promise<Response> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
@@ -41,28 +62,62 @@ async function request<T>(
     credentials: "same-origin"
   };
   if (signal) requestInit.signal = signal;
-  const response = await fetch(path, requestInit);
-  if (!response.ok) {
-    const fallback = `Request failed (${response.status}).`;
-    const error = await response.json().catch(() => ({})) as {
+  const result = await fetch(path, requestInit);
+  if (!result.ok) {
+    if (result.status === 401) {
+      csrf = "";
+      for (const listener of unauthorizedListeners) listener();
+    }
+    const fallback = `Request failed (${result.status}).`;
+    const error = await result.json().catch(() => ({})) as {
       message?: string;
       error?: string;
     };
-    throw new ApiError(error.message ?? fallback, response.status, error.error);
+    throw new ApiError(error.message ?? fallback, result.status, error.error);
   }
-  return response.json() as Promise<T>;
+  return result;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  signal?: AbortSignal
+): Promise<T> {
+  return (await response(path, init, signal)).json() as Promise<T>;
+}
+
+async function download(path: string): Promise<void> {
+  const result = await response(path);
+  const blob = await result.blob();
+  const disposition = result.headers.get("content-disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "lineage-export";
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export const api = {
+  onUnauthorized(listener: () => void) {
+    unauthorizedListeners.add(listener);
+    return () => {
+      unauthorizedListeners.delete(listener);
+    };
+  },
   async session() {
-    const result = await request<{ authenticated: true; csrf: string; expiresAt: number }>(
+    const result = await request<AuthenticatedSession>(
       "/api/v1/auth/session"
     );
     csrf = result.csrf;
     return result;
   },
   async login(token: string) {
-    const result = await request<{ authenticated: true; csrf: string; expiresAt: number }>(
+    const result = await request<AuthenticatedSession>(
       "/api/v1/auth/login",
       { method: "POST", body: JSON.stringify({ token }) }
     );
@@ -70,7 +125,7 @@ export const api = {
     return result;
   },
   async logout() {
-    const result = await request<{ authenticated: false }>("/api/v1/auth/logout", {
+    const result = await request<AnonymousSession>("/api/v1/auth/logout", {
       method: "POST"
     });
     csrf = "";
@@ -128,12 +183,9 @@ export const api = {
       {},
       signal
     ),
-  explain: (id: string, path: string, line: number, signal?: AbortSignal) =>
+  explain: (id: string, selection: ExplainQuery, signal?: AbortSignal) =>
     request<LineExplanation>(
-      `/api/v1/repositories/${encodeURIComponent(id)}/explain?${new URLSearchParams({
-        path,
-        line: String(line)
-      })}`,
+      `/api/v1/repositories/${encodeURIComponent(id)}/explain?${queryString(selection)}`,
       {},
       signal
     ),
@@ -143,28 +195,30 @@ export const api = {
       {},
       signal
     ),
-  sessionDetail: (id: string, sessionId: string, signal?: AbortSignal) =>
+  sessionDetail: (
+    id: string,
+    provider: Provider,
+    sessionId: string,
+    signal?: AbortSignal
+  ) =>
     request<SessionDetail>(
-      `/api/v1/repositories/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}`,
+      `/api/v1/repositories/${encodeURIComponent(id)}/sessions/${encodeURIComponent(provider)}/${encodeURIComponent(sessionId)}`,
       {},
       signal
     ),
-  followUp: (id: string, path: string, line: number, question: string) =>
+  followUp: (id: string, followUp: FollowUpRequest) =>
     request<{ answer: string }>(
       `/api/v1/repositories/${encodeURIComponent(id)}/follow-up`,
-      { method: "POST", body: JSON.stringify({ path, line, question }) }
+      { method: "POST", body: JSON.stringify(followUp) }
     ),
   captureStatus: (signal?: AbortSignal) =>
     request<CaptureHealth>("/api/v1/capture/status", {}, signal),
   repositoryCapture: (id: string, signal?: AbortSignal) =>
-    request<{
-      harnesses: Array<{
-        provider: "codex" | "github-copilot";
-        configured: boolean;
-        configurationPath: string;
-      }>;
-      health: CaptureHealth;
-    }>(`/api/v1/repositories/${encodeURIComponent(id)}/capture`, {}, signal),
+    request<RepositoryCaptureResponse>(
+      `/api/v1/repositories/${encodeURIComponent(id)}/capture`,
+      {},
+      signal
+    ),
   installCapture: (id: string, provider: "codex" | "github-copilot") =>
     request<unknown>(`/api/v1/repositories/${encodeURIComponent(id)}/capture/install`, {
       method: "POST",
@@ -185,13 +239,11 @@ export const api = {
     }),
   exportUrl(
     id: string,
-    kind: "session-markdown" | "session-json" | "agent-trace" | "explanation",
-    options: { session?: string; path?: string; line?: number } = {}
+    kind: ExportKind,
+    options: Omit<ExportQuery, "kind"> = {}
   ) {
-    const query = new URLSearchParams({ kind });
-    if (options.session) query.set("session", options.session);
-    if (options.path) query.set("path", options.path);
-    if (options.line) query.set("line", String(options.line));
+    const query = queryString({ kind, ...options });
     return `/api/v1/repositories/${encodeURIComponent(id)}/export?${query}`;
-  }
+  },
+  download
 };

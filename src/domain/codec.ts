@@ -120,7 +120,7 @@ export function decodeLineageEvent(value: unknown): LineageEvent | undefined {
     id,
     lineageSchemaVersion: string(item["lineage_schema_version"], "0.1"),
     capturedAt: new Date(capturedAt).toISOString(),
-    source: string(item["source"], "provider-hook"),
+    source: string(item["source"], `${provider}-hook`),
     provider,
     providerEventName: string(item["provider_event_name"]),
     eventType: string(item["event_type"]),

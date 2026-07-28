@@ -80,9 +80,17 @@ export async function reviewMetrics(
   sessions: number;
   explainedPercent: number;
 }> {
-  const commits = Number(
-    (await git.run(repoRoot, ["rev-list", "--count", `${base}...HEAD`])).stdout.trim()
-  ) || 0;
+  const mergeBase = await git.mergeBase(repoRoot, base);
+  const commits =
+    Number(
+      (
+        await git.run(repoRoot, [
+          "rev-list",
+          "--count",
+          `${mergeBase}..HEAD`
+        ])
+      ).stdout.trim()
+    ) || 0;
   const explained = files.filter((file) => sessionsForFile(sessions, file.path).length > 0);
   return {
     commits,

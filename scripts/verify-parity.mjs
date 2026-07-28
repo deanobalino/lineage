@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -59,9 +60,17 @@ for (const row of matrix.rows ?? []) {
     failures.push(`${row.id}: replacement evidence is missing`);
   } else {
     for (const evidence of row.replacementEvidence) {
-      const evidencePath = String(evidence).split("#", 1)[0].split(":", 1)[0];
-      if (evidencePath && !existsSync(absolute(evidencePath))) {
+      const [evidencePath, testID] = String(evidence).split("#", 2);
+      if (!evidencePath || !existsSync(absolute(evidencePath))) {
         failures.push(`${row.id}: replacement evidence does not exist: ${evidence}`);
+        continue;
+      }
+      if (!testID) {
+        failures.push(`${row.id}: replacement evidence lacks a named test id: ${evidence}`);
+        continue;
+      }
+      if (!readFileSync(absolute(evidencePath), "utf8").includes(testID)) {
+        failures.push(`${row.id}: named replacement test is missing: ${evidence}`);
       }
     }
   }
@@ -86,12 +95,44 @@ const oracleOption =
 const oraclePath = oracleOption
   ? (oracleOption.endsWith(".json") ? absolute(oracleOption) : join(absolute(oracleOption), matrix.oracleArtifact.split("/").at(-1)))
   : undefined;
+let oracleCompared = false;
+let oracleSections = {};
 if (!oraclePath || !existsSync(oraclePath)) {
   failures.push("retained compatibility oracle is missing");
 } else {
   const oracle = readJSON(oraclePath);
   if (oracle.schema_version !== 1 || oracle.baseline !== "swift-lineage-core") {
     failures.push("retained compatibility oracle has an unsupported contract");
+  }
+  const comparison = spawnSync(
+    "npx",
+    [
+      "--no-install",
+      "tsx",
+      "scripts/compare-node-oracle.ts",
+      "--oracle",
+      oraclePath
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 60_000,
+      maxBuffer: 4 * 1024 * 1024
+    }
+  );
+  try {
+    const report = JSON.parse(comparison.stdout);
+    oracleCompared = report.compatible === true;
+    oracleSections = report.sections ?? {};
+    if (!oracleCompared) {
+      failures.push(
+        `replacement output differs from retained oracle: ${(report.failures ?? []).join(", ")}`
+      );
+    }
+  } catch {
+    failures.push(
+      `replacement oracle comparison did not return valid JSON: ${comparison.stderr.trim() || "unknown failure"}`
+    );
   }
 }
 
@@ -102,6 +143,8 @@ const report = {
   rowsTotal: matrix.rows?.length ?? 0,
   rowsVerified: (matrix.rows ?? []).filter((row) => row.status === "verified" && row.replacementEvidence?.length > 0).length,
   oraclePresent: Boolean(oraclePath && existsSync(oraclePath)),
+  oracleCompared,
+  oracleSections,
   cutoverReady: failures.length === 0,
   failures
 };

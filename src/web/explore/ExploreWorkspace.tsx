@@ -116,7 +116,11 @@ export function ExploreWorkspace() {
   const explanation = useAsync(
     (signal) =>
       selectedLine
-        ? api.explain(repositoryId, selectedPath, selectedLine, signal)
+        ? api.explain(
+            repositoryId,
+            { path: selectedPath, line: selectedLine, side: "new" },
+            signal
+          )
         : Promise.resolve(undefined),
     [repositoryId, selectedPath, selectedLine]
   );

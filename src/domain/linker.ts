@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type {
   DecisionOption,
   DecisionRecord,
@@ -10,6 +12,8 @@ import type {
 import { canonicalEventTypes, providerDisplayName } from "./models.js";
 import { ProvenanceStore } from "./provenance-store.js";
 import { compareEvents, stableId, uniqueSorted } from "./stable.js";
+
+const execFileAsync = promisify(execFile);
 
 function payloadString(event: LineageEvent, key: string): string | undefined {
   const value = event.payload[key];
@@ -213,11 +217,30 @@ export interface LinkOptions {
   commitMessage?: (sha: string) => Promise<string | undefined>;
 }
 
+async function repositoryCommitMessage(
+  repoRoot: string,
+  sha: string
+): Promise<string | undefined> {
+  if (!/^[0-9a-f]{7,64}$/i.test(sha)) return undefined;
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", repoRoot, "show", "-s", "--format=%s", sha],
+      { encoding: "utf8", timeout: 5_000, maxBuffer: 1024 * 1024 }
+    );
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function linkEvents(events: LineageEvent[]): ProvenanceSession[] {
   const grouped = new Map<string, LineageEvent[]>();
   for (const event of events) {
     const key = `${event.provider}\0${event.sessionId}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), event]);
+    const group = grouped.get(key);
+    if (group) group.push(event);
+    else grouped.set(key, [event]);
   }
 
   return [...grouped.values()]
@@ -272,7 +295,13 @@ export function linkEvents(events: LineageEvent[]): ProvenanceSession[] {
         permissionRequests: ordered.flatMap((event) => {
           const reason = payloadString(event, "approval_reason");
           const status = payloadString(event, "approval_status");
-          if (!reason && event.eventType !== canonicalEventTypes.permissionDecision) return [];
+          if (
+            !reason &&
+            event.eventType !== canonicalEventTypes.permissionRequest &&
+            event.eventType !== canonicalEventTypes.permissionDecision
+          ) {
+            return [];
+          }
           return [`${reason ?? `Permission requested for ${payloadString(event, "tool_name") ?? "tool"}`}${status ? ` (${status})` : ""}`];
         }),
         decisions: decisions(ordered),
@@ -307,9 +336,12 @@ export async function linkRepository(
   options: LinkOptions = {}
 ): Promise<ProvenanceSession[]> {
   const sessions = linkEvents(await store.events());
+  const commitMessage =
+    options.commitMessage ??
+    ((sha: string) => repositoryCommitMessage(store.repoRoot, sha));
   for (const session of sessions) {
-    if (session.commitSha && options.commitMessage) {
-      const message = await options.commitMessage(session.commitSha);
+    if (session.commitSha) {
+      const message = await commitMessage(session.commitSha);
       if (message) session.commitMessage = message;
     }
     await store.writeSession(session);

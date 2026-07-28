@@ -1,6 +1,7 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { atomicWrite } from "../../domain/provenance-store.js";
 
 interface Verifier {
@@ -12,6 +13,12 @@ interface CredentialState {
   version: 1;
   operator: Verifier;
   capture: Verifier;
+  capturePending?: Array<{
+    id: string;
+    verifier: Verifier;
+    createdAt: string;
+    previous?: boolean;
+  }>;
   rotatedAt: string;
 }
 
@@ -24,17 +31,23 @@ function token(): string {
   return randomBytes(32).toString("base64url");
 }
 
-function verifier(secret: string): Verifier {
+const deriveKey = promisify(scrypt);
+
+async function verifier(secret: string): Promise<Verifier> {
   const salt = randomBytes(16);
   return {
     salt: salt.toString("base64url"),
-    hash: scryptSync(secret, salt, 32).toString("base64url")
+    hash: (await deriveKey(secret, salt, 32) as Buffer).toString("base64url")
   };
 }
 
-function verify(secret: string, expected: Verifier): boolean {
+async function verify(secret: string, expected: Verifier): Promise<boolean> {
   try {
-    const actual = scryptSync(secret, Buffer.from(expected.salt, "base64url"), 32);
+    const actual = await deriveKey(
+      secret,
+      Buffer.from(expected.salt, "base64url"),
+      32
+    ) as Buffer;
     const hash = Buffer.from(expected.hash, "base64url");
     return actual.length === hash.length && timingSafeEqual(actual, hash);
   } catch {
@@ -45,6 +58,7 @@ function verify(secret: string, expected: Verifier): boolean {
 export class CredentialStore {
   readonly path: string;
   #state!: CredentialState;
+  #mutation = Promise.resolve();
 
   constructor(readonly stateDirectory: string) {
     this.path = join(stateDirectory, "credentials.json");
@@ -72,8 +86,8 @@ export class CredentialStore {
       const captureToken = token();
       this.#state = {
         version: 1,
-        operator: verifier(operatorToken),
-        capture: verifier(captureToken),
+        operator: await verifier(operatorToken),
+        capture: await verifier(captureToken),
         rotatedAt: new Date().toISOString()
       };
       await this.#save();
@@ -81,32 +95,120 @@ export class CredentialStore {
     }
   }
 
-  verifyOperator(secret: string): boolean {
+  verifyOperator(secret: string): Promise<boolean> {
     return verify(secret, this.#state.operator);
   }
 
-  verifyCapture(secret: string): boolean {
-    return verify(secret, this.#state.capture);
+  async verifyCapture(secret: string): Promise<boolean> {
+    if (await verify(secret, this.#state.capture)) return true;
+    for (const pending of this.#state.capturePending ?? []) {
+      if (await verify(secret, pending.verifier)) return true;
+    }
+    return false;
   }
 
   async rotateOperator(): Promise<string> {
-    const secret = token();
-    this.#state.operator = verifier(secret);
-    this.#state.rotatedAt = new Date().toISOString();
-    await this.#save();
-    return secret;
+    return this.#mutate(async () => {
+      const secret = token();
+      await this.#persistState({
+        ...this.#state,
+        operator: await verifier(secret),
+        rotatedAt: new Date().toISOString()
+      });
+      return secret;
+    });
   }
 
   async rotateCapture(): Promise<string> {
-    const secret = token();
-    this.#state.capture = verifier(secret);
-    this.#state.rotatedAt = new Date().toISOString();
-    await this.#save();
-    return secret;
+    const rotation = await this.beginCaptureRotation();
+    await this.commitCaptureRotation(rotation.id);
+    await this.finalizeCaptureRotation(rotation.id);
+    return rotation.token;
+  }
+
+  async beginCaptureRotation(): Promise<{ id: string; token: string }> {
+    return this.#mutate(async () => {
+      const secret = token();
+      const pending = {
+        id: randomBytes(16).toString("base64url"),
+        verifier: await verifier(secret),
+        createdAt: new Date().toISOString()
+      };
+      await this.#persistState({
+        ...this.#state,
+        capturePending: [...(this.#state.capturePending ?? []), pending].slice(-4)
+      });
+      return { id: pending.id, token: secret };
+    });
+  }
+
+  async commitCaptureRotation(id: string): Promise<void> {
+    await this.#mutate(async () => {
+      const pending = this.#state.capturePending?.find((entry) => entry.id === id);
+      if (!pending || pending.previous) {
+        throw new Error("Capture credential rotation is no longer pending.");
+      }
+      const previous = this.#state.capture;
+      await this.#persistState({
+        ...this.#state,
+        capture: pending.verifier,
+        capturePending: [
+          ...(this.#state.capturePending ?? []).filter((entry) => entry.id !== id),
+          {
+            id,
+            verifier: previous,
+            createdAt: new Date().toISOString(),
+            previous: true
+          }
+        ],
+        rotatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  async cancelCaptureRotation(id: string): Promise<void> {
+    await this.#mutate(async () => {
+      const pending = this.#state.capturePending?.find((entry) => entry.id === id);
+      await this.#persistState({
+        ...this.#state,
+        capture: pending?.previous ? pending.verifier : this.#state.capture,
+        capturePending: (this.#state.capturePending ?? [])
+          .filter((entry) => entry.id !== id)
+      });
+    });
+  }
+
+  async finalizeCaptureRotation(id: string): Promise<void> {
+    await this.#mutate(async () => {
+      await this.#persistState({
+        ...this.#state,
+        capturePending: (this.#state.capturePending ?? [])
+          .filter((entry) => entry.id !== id)
+      });
+    });
   }
 
   async #save(): Promise<void> {
-    await atomicWrite(this.path, `${JSON.stringify(this.#state, null, 2)}\n`, 0o600);
+    await this.#persistState(this.#state);
+  }
+
+  async #persistState(state: CredentialState): Promise<void> {
+    await atomicWrite(this.path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
     await chmod(this.path, 0o600);
+    this.#state = state;
+  }
+
+  async #mutate<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.#mutation;
+    let release!: () => void;
+    this.#mutation = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 }

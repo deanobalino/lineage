@@ -16,7 +16,6 @@ import {
 import {
   Button,
   ErrorNotice,
-  IconButton,
   LoadingRows,
   Sheet
 } from "../components/Ui.js";
@@ -28,6 +27,7 @@ import type {
   LineExplanation,
   ReviewMetrics
 } from "../types.js";
+import type { DiffSide, ExplainQuery } from "../../shared/api-contracts.js";
 
 const FILE_GROUPS: Array<ChangedFile["status"]> = [
   "added",
@@ -71,6 +71,27 @@ function lineNumber(line: DiffLine) {
   return line.newLine ?? line.oldLine;
 }
 
+function lineSelection(
+  path: string,
+  line: number,
+  base: string,
+  side: DiffSide,
+  previousPath?: string
+): ExplainQuery {
+  return {
+    path,
+    line,
+    base,
+    side,
+    ...(previousPath ? { previousPath } : {})
+  };
+}
+
+function download(event: React.MouseEvent<HTMLAnchorElement>, url: string) {
+  event.preventDefault();
+  void api.download(url).catch(() => undefined);
+}
+
 export function EvidenceInspector({
   explanation,
   loading,
@@ -78,6 +99,9 @@ export function EvidenceInspector({
   repositoryId,
   path,
   line,
+  base,
+  side,
+  previousPath,
   close,
   mobile
 }: {
@@ -87,6 +111,9 @@ export function EvidenceInspector({
   repositoryId: string;
   path: string;
   line: number | undefined;
+  base?: string;
+  side?: DiffSide;
+  previousPath?: string;
   close?: () => void;
   mobile?: boolean;
 }) {
@@ -105,7 +132,14 @@ export function EvidenceInspector({
     setAsking(true);
     setAnswer("");
     try {
-      const result = await api.followUp(repositoryId, path, line, question.trim());
+      const result = await api.followUp(repositoryId, {
+        path,
+        line,
+        question: question.trim(),
+        ...(base ? { base } : {}),
+        ...(side ? { side } : {}),
+        ...(previousPath ? { previousPath } : {})
+      });
       setAnswer(result.answer);
     } catch (caught) {
       setAnswer(caught instanceof Error ? caught.message : "Follow-up failed.");
@@ -152,7 +186,14 @@ export function EvidenceInspector({
         </div>
         <a
           className="icon-button"
-          href={api.exportUrl(repositoryId, "explanation", { path, line: line ?? 1 })}
+          href={api.exportUrl(repositoryId, "explanation", {
+            path,
+            line: line ?? 1,
+            ...(base ? { base } : {}),
+            ...(side ? { side } : {}),
+            ...(previousPath ? { previousPath } : {})
+          })}
+          onClick={(event) => download(event, event.currentTarget.href)}
           aria-label="Export explanation"
           title="Export explanation"
         >
@@ -223,11 +264,11 @@ export function EvidenceInspector({
           </dl>
         ) : <p>No Git blame evidence was available.</p>}
       </details>
-      {explanation.sessionId ? (
+      {explanation.sessionId && explanation.sessionProvider ? (
         <section className="open-session">
           <h3>Open session</h3>
           <code>{explanation.sessionId}</code>
-          <Link to={`/r/${repositoryId}/sessions/${encodeURIComponent(explanation.sessionId)}`}>
+          <Link to={`/r/${repositoryId}/sessions/${encodeURIComponent(explanation.sessionProvider)}/${encodeURIComponent(explanation.sessionId)}`}>
             View full session
           </Link>
         </section>
@@ -271,7 +312,12 @@ export function ReviewWorkspace() {
     review.data?.files[0]?.path ??
     "";
   const selectedLine = Number(searchParams.get("line")) || undefined;
-  const selectedSide = searchParams.get("side") ?? "new";
+  const selectedSide: DiffSide =
+    searchParams.get("side") === "old" ? "old" : "new";
+  const selectedFile = review.data?.files.find((file) => file.path === selectedPath);
+  const previousPath =
+    selectedFile?.previousPath ??
+    (selectedSide === "old" ? selectedPath : undefined);
   const diff = useAsync(
     (signal) =>
       selectedPath
@@ -282,9 +328,19 @@ export function ReviewWorkspace() {
   const explanation = useAsync(
     (signal) =>
       selectedLine
-        ? api.explain(repositoryId, selectedPath, selectedLine, signal)
+        ? api.explain(
+            repositoryId,
+            lineSelection(
+              selectedPath,
+              selectedLine,
+              base,
+              selectedSide,
+              previousPath
+            ),
+            signal
+          )
         : Promise.resolve(undefined),
-    [repositoryId, selectedPath, selectedLine]
+    [repositoryId, selectedPath, selectedLine, base, selectedSide, previousPath]
   );
 
   useEffect(() => {
@@ -306,6 +362,7 @@ export function ReviewWorkspace() {
     next.set("base", base);
     next.set("file", path);
     next.delete("line");
+    next.delete("side");
     setSearchParams(next);
     setFilesOpen(false);
     setEvidenceOpen(false);
@@ -392,7 +449,16 @@ export function ReviewWorkspace() {
             </span>
             <h1>{selectedPath || "No changed files"}</h1>
             {selectedPath ? (
-              <a href={api.exportUrl(repositoryId, "explanation", { path: selectedPath, line: selectedLine ?? 1 })}>
+              <a
+                href={api.exportUrl(repositoryId, "explanation", {
+                  path: selectedPath,
+                  line: selectedLine ?? 1,
+                  base,
+                  side: selectedSide,
+                  ...(previousPath ? { previousPath } : {})
+                })}
+                onClick={(event) => download(event, event.currentTarget.href)}
+              >
                 Export
               </a>
             ) : null}
@@ -479,6 +545,9 @@ export function ReviewWorkspace() {
           repositoryId={repositoryId}
           path={selectedPath}
           line={selectedLine}
+          base={base}
+          side={selectedSide}
+          {...(previousPath ? { previousPath } : {})}
         />
       </div>
       <Sheet
@@ -503,6 +572,9 @@ export function ReviewWorkspace() {
           repositoryId={repositoryId}
           path={selectedPath}
           line={selectedLine}
+          base={base}
+          side={selectedSide}
+          {...(previousPath ? { previousPath } : {})}
           close={closeEvidence}
           mobile
         />

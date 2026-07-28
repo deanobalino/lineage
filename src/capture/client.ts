@@ -12,6 +12,16 @@ export interface CaptureClientConfig {
   baselineDirectory: string;
 }
 
+export interface CaptureServerHealth {
+  state: string;
+  pending: number;
+  claimed: number;
+  deadLetters: number;
+  bytes: number;
+  incompleteEvidence: number;
+  lastError?: string;
+}
+
 export async function writeCaptureClientConfig(
   stateDirectory: string,
   config: CaptureClientConfig
@@ -45,7 +55,7 @@ export async function deliverClaim(
   claim: Claim,
   outbox: CaptureOutbox,
   config: CaptureClientConfig,
-  timeoutMs = 250
+  timeoutMs = 500
 ): Promise<"delivered" | "transient" | "permanent"> {
   try {
     const response = await fetch(config.endpoint, {
@@ -69,10 +79,13 @@ export async function deliverClaim(
       );
       return "permanent";
     }
-    await outbox.retryLater(claim);
+    await outbox.retryLater(claim, `Capture server returned ${response.status}.`);
     return "transient";
-  } catch {
-    await outbox.retryLater(claim);
+  } catch (error) {
+    await outbox.retryLater(
+      claim,
+      error instanceof Error ? error.message : "Capture delivery failed."
+    );
     return "transient";
   }
 }
@@ -82,7 +95,34 @@ export async function wakeCapture(
   config: CaptureClientConfig
 ): Promise<"delivered" | "transient" | "permanent"> {
   const outbox = new CaptureOutbox(config.outboxDirectory);
-  const claim = await outbox.claimNext();
+  const claim = await outbox.claimById(envelope.ingestionId);
   if (!claim) return "transient";
   return deliverClaim(claim, outbox, config);
+}
+
+export async function captureServerHealth(
+  config: CaptureClientConfig,
+  timeoutMs = 500
+): Promise<CaptureServerHealth> {
+  const endpoint = new URL(config.endpoint);
+  endpoint.pathname = endpoint.pathname.replace(/\/api\/v1\/capture\/?$/, "/api/v1/capture/health");
+  const response = await fetch(endpoint, {
+    headers: { authorization: `Bearer ${config.token}` },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  if (!response.ok) {
+    throw new Error(`Capture health endpoint returned ${response.status}.`);
+  }
+  const health = await response.json() as CaptureServerHealth;
+  if (
+    !health ||
+    typeof health.state !== "string" ||
+    !Number.isInteger(health.pending) ||
+    !Number.isInteger(health.claimed) ||
+    !Number.isInteger(health.deadLetters) ||
+    !Number.isInteger(health.incompleteEvidence)
+  ) {
+    throw new Error("Capture health response is invalid.");
+  }
+  return health;
 }

@@ -6,6 +6,8 @@ import type { InjectOptions } from "light-my-request";
 import { buildApp, type BuiltApp } from "../../../src/server/app.js";
 import type { ServerConfig } from "../../../src/server/config.js";
 import { GitService } from "../../../src/server/git/git-service.js";
+import { ProvenanceStore } from "../../../src/domain/provenance-store.js";
+import type { ProvenanceSession } from "../../../src/domain/models.js";
 
 const temporaryRoots: string[] = [];
 process.env["LINEAGE_LOG_LEVEL"] = "silent";
@@ -63,6 +65,50 @@ async function makeRepository(parent: string, name = "project"): Promise<string>
   await git.run(root, ["add", "."]);
   await git.run(root, ["commit", "-m", "Change value"]);
   return root;
+}
+
+async function makeDeletedRepository(parent: string): Promise<string> {
+  const root = join(parent, "deleted-project");
+  await mkdir(join(root, "src"), { recursive: true });
+  const git = new GitService();
+  await git.run(root, ["init", "-b", "main"]);
+  await git.run(root, ["config", "user.name", "Test User"]);
+  await git.run(root, ["config", "user.email", "test@example.com"]);
+  await writeFile(join(root, "src/removed.ts"), "export const removed = 1;\n", "utf8");
+  await git.run(root, ["add", "."]);
+  await git.run(root, ["commit", "-m", "Add removable value"]);
+  await git.run(root, ["switch", "-c", "feature/remove"]);
+  await git.run(root, ["rm", "src/removed.ts"]);
+  await git.run(root, ["commit", "-m", "Remove obsolete value"]);
+  return root;
+}
+
+function session(
+  provider: "codex" | "github-copilot",
+  providerDisplayName: string,
+  prompt: string
+): ProvenanceSession {
+  return {
+    provider,
+    providerDisplayName,
+    sessionId: "shared-session",
+    source: provider,
+    actor: providerDisplayName,
+    humanReviewer: "operator",
+    prompt,
+    toolsUsed: [],
+    commandsRun: [],
+    filesEdited: ["src/value.ts"],
+    testsRun: [],
+    testsResult: "unknown",
+    permissionRequests: [],
+    decisions: [],
+    externalConstraints: [],
+    lastAssistantMessage: "",
+    gitDiff: "",
+    reasoningSummary: "",
+    lineRanges: []
+  };
 }
 
 async function authenticate(built: BuiltApp, token = built.bootstrap.operatorToken!) {
@@ -219,6 +265,159 @@ describe("self-hosted server", () => {
     await built.app.close();
   });
 
+  it("resolves deleted old-side evidence against the merge-base", async () => {
+    const fixture = await temporaryConfig();
+    const repo = await makeDeletedRepository(fixture.allowed);
+    const built = await buildApp(fixture.config);
+    const auth = await authenticate(built);
+    const add = await built.app.inject(
+      authenticated(auth, "POST", "/api/v1/repositories", { path: repo })
+    );
+    const id = add.json<{ repository: { id: string } }>().repository.id;
+    const selection =
+      "base=main&side=old&path=src%2Fremoved.ts&line=1";
+
+    const explanation = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/explain?${selection}`
+      )
+    );
+    expect(explanation.statusCode).toBe(200);
+    expect(explanation.json()).toMatchObject({
+      file: "src/removed.ts",
+      line: 1,
+      gitEvidence: {
+        content: "export const removed = 1;",
+        commitSummary: "Add removable value"
+      }
+    });
+
+    const followUp = await built.app.inject(
+      authenticated(auth, "POST", `/api/v1/repositories/${id}/follow-up`, {
+        path: "src/removed.ts",
+        line: 1,
+        base: "main",
+        side: "old",
+        question: "What evidence supports this?"
+      })
+    );
+    expect(followUp.statusCode).toBe(200);
+    expect(followUp.json<{ answer: string }>().answer).toContain("Git evidence");
+
+    const exported = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/export?kind=explanation&${selection}`
+      )
+    );
+    expect(exported.statusCode).toBe(200);
+    expect(exported.body).toContain("src/removed.ts:1");
+    await built.app.close();
+  });
+
+  it("addresses colliding session IDs by provider for detail and export", async () => {
+    const fixture = await temporaryConfig();
+    const repo = await makeRepository(fixture.allowed);
+    const store = new ProvenanceStore(repo);
+    await store.writeSession(session("codex", "Codex", "Codex prompt"));
+    await store.writeSession(
+      session("github-copilot", "GitHub Copilot CLI", "Copilot prompt")
+    );
+    const built = await buildApp(fixture.config);
+    const auth = await authenticate(built);
+    const add = await built.app.inject(
+      authenticated(auth, "POST", "/api/v1/repositories", { path: repo })
+    );
+    const id = add.json<{ repository: { id: string } }>().repository.id;
+
+    const codex = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/sessions/codex/shared-session`
+      )
+    );
+    const copilot = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/sessions/github-copilot/shared-session`
+      )
+    );
+    expect(codex.json()).toMatchObject({
+      session: { provider: "codex", prompt: "Codex prompt" }
+    });
+    expect(copilot.json()).toMatchObject({
+      session: { provider: "github-copilot", prompt: "Copilot prompt" }
+    });
+
+    const codexExport = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/export?kind=session-json&provider=codex&session=shared-session`
+      )
+    );
+    const copilotExport = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/export?kind=session-json&provider=github-copilot&session=shared-session`
+      )
+    );
+    expect(JSON.parse(codexExport.body)).toMatchObject({
+      provider: "Codex",
+      prompt: "Codex prompt"
+    });
+    expect(JSON.parse(copilotExport.body)).toMatchObject({
+      provider: "GitHub Copilot CLI",
+      prompt: "Copilot prompt"
+    });
+    await built.app.close();
+  });
+
+  it("returns the shared capture harness status contract", async () => {
+    const fixture = await temporaryConfig();
+    const repo = await makeRepository(fixture.allowed);
+    await mkdir(join(repo, ".codex"), { recursive: true });
+    await writeFile(
+      join(repo, ".codex/config.toml"),
+      "[features]\nother = true\n",
+      "utf8"
+    );
+    const built = await buildApp(fixture.config);
+    const auth = await authenticate(built);
+    const add = await built.app.inject(
+      authenticated(auth, "POST", "/api/v1/repositories", { path: repo })
+    );
+    const id = add.json<{ repository: { id: string } }>().repository.id;
+
+    const response = await built.app.inject(
+      authenticated(auth, "GET", `/api/v1/repositories/${id}/capture`)
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      harnesses: [
+        {
+          provider: "codex",
+          configured: true,
+          owned: false,
+          path: join(repo, ".codex/config.toml")
+        },
+        {
+          provider: "github-copilot",
+          configured: false,
+          owned: false,
+          path: join(repo, ".github/hooks/lineage-copilot.json")
+        }
+      ]
+    });
+    await built.app.close();
+  });
+
   it("forgets only registry state, re-adds existing provenance, and creates a real demo", async () => {
     const fixture = await temporaryConfig();
     const repo = await makeRepository(fixture.allowed);
@@ -323,6 +522,78 @@ describe("self-hosted server", () => {
       headers: { host: "localhost" },
       payload: { token: newToken }
     })).statusCode).toBe(200);
+    await built.app.close();
+  });
+
+  it("rejects a stored session transcript belonging to another repository", async () => {
+    const fixture = await temporaryConfig();
+    const repo = await makeRepository(fixture.allowed, "selected");
+    const otherRepo = await makeRepository(fixture.allowed, "other");
+    const transcriptRoot = join(fixture.root, "transcripts");
+    await mkdir(transcriptRoot, { recursive: true });
+    fixture.config.transcriptRoots = [transcriptRoot];
+    const transcript = join(transcriptRoot, "foreign.jsonl");
+    await writeFile(
+      transcript,
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { id: "forged-session", cwd: otherRepo }
+        }),
+        JSON.stringify({
+          type: "response_item",
+          payload: {
+            id: "foreign-message",
+            type: "agent_message",
+            message: "cross-repository-secret"
+          }
+        }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    const session: ProvenanceSession = {
+      provider: "codex",
+      providerDisplayName: "Codex",
+      sessionId: "forged-session",
+      source: "stored",
+      actor: "Codex",
+      transcriptPath: transcript,
+      humanReviewer: "Unknown",
+      prompt: "",
+      toolsUsed: [],
+      commandsRun: [],
+      filesEdited: [],
+      testsRun: [],
+      testsResult: "unknown",
+      permissionRequests: [],
+      decisions: [],
+      externalConstraints: [],
+      lastAssistantMessage: "",
+      gitDiff: "",
+      reasoningSummary: "",
+      lineRanges: []
+    };
+    await new ProvenanceStore(repo).writeSession(session);
+    const built = await buildApp(fixture.config);
+    const auth = await authenticate(built);
+    const add = await built.app.inject(
+      authenticated(auth, "POST", "/api/v1/repositories", { path: repo })
+    );
+    const id = add.json<{ repository: { id: string } }>().repository.id;
+
+    const response = await built.app.inject(
+      authenticated(
+        auth,
+        "GET",
+        `/api/v1/repositories/${id}/sessions/codex/forged-session`
+      )
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      evidence: { transcriptAvailable: false, messages: [] }
+    });
+    expect(response.body).not.toContain("cross-repository-secret");
     await built.app.close();
   });
 

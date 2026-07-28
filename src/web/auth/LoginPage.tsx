@@ -16,7 +16,6 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
     setSubmitting(true);
     try {
       await api.login(token.trim());
-      onLogin();
       const intended =
         typeof location.state === "object" &&
         location.state &&
@@ -25,6 +24,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
           ? location.state.from
           : "/repositories";
       navigate(intended, { replace: true });
+      onLogin();
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : undefined;
       setError(
@@ -79,4 +79,3 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
     </main>
   );
 }
-

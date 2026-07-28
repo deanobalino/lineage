@@ -1,4 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { readBoundedTextFile } from "../shared/path-safety.js";
+import {
+  MAX_TRANSCRIPT_BYTES,
+  MAX_TRANSCRIPT_LINES,
+  MAX_TRANSCRIPT_MESSAGES
+} from "./limits.js";
 import type { LineRange, ProvenanceSession } from "./models.js";
 import { stableId } from "./stable.js";
 
@@ -25,6 +30,12 @@ export interface SessionEvidence {
   permissionMode?: string;
   transcriptPath?: string;
   transcriptAvailable: boolean;
+  transcriptTruncated?: true;
+  transcriptLimits?: {
+    bytes: number;
+    lines: number;
+    messages: number;
+  };
   prompt: string;
   finalMessage: string;
   toolsUsed: string[];
@@ -159,17 +170,44 @@ export function buildTimeline(session: ProvenanceSession): TimelineEvent[] {
 export async function loadSessionEvidence(session: ProvenanceSession): Promise<SessionEvidence> {
   let messages: TranscriptMessage[] = [];
   let transcriptAvailable = false;
+  let transcriptTruncated = false;
   if (session.transcriptPath) {
     try {
-      const transcript = await readFile(session.transcriptPath, "utf8");
-      transcriptAvailable = true;
-      messages = transcript
-        .split("\n")
-        .flatMap((line, index) => {
-          if (!line.trim()) return [];
-          const message = parseTranscriptLine(line, String(index));
-          return message ? [message] : [];
-        });
+      const transcript = await readBoundedTextFile(session.transcriptPath, MAX_TRANSCRIPT_BYTES);
+      if (transcript) {
+        transcriptAvailable = true;
+        let text = transcript.text;
+        if (transcript.truncated) {
+          const lastCompleteLine = text.lastIndexOf("\n");
+          text = lastCompleteLine >= 0 ? text.slice(0, lastCompleteLine) : "";
+        }
+        let cursor = 0;
+        let lineNumber = 0;
+        while (
+          cursor <= text.length &&
+          lineNumber < MAX_TRANSCRIPT_LINES &&
+          messages.length < MAX_TRANSCRIPT_MESSAGES
+        ) {
+          const newline = text.indexOf("\n", cursor);
+          const end = newline < 0 ? text.length : newline;
+          const line = text.slice(cursor, end);
+          if (line.trim()) {
+            const message = parseTranscriptLine(line, String(lineNumber));
+            if (message) messages.push(message);
+          }
+          lineNumber += 1;
+          if (newline < 0) {
+            cursor = text.length + 1;
+            break;
+          }
+          cursor = newline + 1;
+        }
+        transcriptTruncated =
+          transcript.truncated ||
+          cursor <= text.length ||
+          lineNumber >= MAX_TRANSCRIPT_LINES ||
+          messages.length >= MAX_TRANSCRIPT_MESSAGES;
+      }
     } catch {
       transcriptAvailable = false;
     }
@@ -192,6 +230,14 @@ export async function loadSessionEvidence(session: ProvenanceSession): Promise<S
     gitDiff: redact(session.gitDiff),
     messages
   };
+  if (transcriptTruncated) {
+    evidence.transcriptTruncated = true;
+    evidence.transcriptLimits = {
+      bytes: MAX_TRANSCRIPT_BYTES,
+      lines: MAX_TRANSCRIPT_LINES,
+      messages: MAX_TRANSCRIPT_MESSAGES
+    };
+  }
   const optional: Array<[keyof SessionEvidence, string | undefined]> = [
     ["model", session.model],
     ["permissionMode", session.permissionMode],

@@ -4,16 +4,18 @@ import { api } from "../api.js";
 import { Button, ErrorNotice, LoadingRows } from "../components/Ui.js";
 import { useAsync } from "../hooks.js";
 import type { ShellContext } from "../shell/RepositoryShell.js";
+import type { CaptureHealth } from "../types.js";
 
-function healthMessage(state?: string) {
+function healthMessage(state: CaptureHealth["state"]) {
   switch (state) {
     case "healthy": return "Events are reaching this server and no durable backlog remains.";
+    case "restored": return "Capture recovered after an interruption and the durable backlog is clear.";
     case "pending": return "Coding sessions remain unblocked. Captured events are queued durably for replay.";
     case "replaying": return "Queued events are being replayed in their deterministic provider order.";
     case "degraded": return "Capture is failing open, but some evidence could not be saved. Review the failures below.";
     case "interrupted": return "Capture was interrupted after previously succeeding. New hook calls still fail open.";
     case "installed": return "Capture is installed. Complete a harness event to confirm end-to-end health.";
-    default: return "No harness has confirmed capture on this server yet.";
+    case "off": return "No harness has confirmed capture on this server yet.";
   }
 }
 
@@ -77,7 +79,7 @@ export function CaptureWorkspace() {
           <div><dt>Incomplete evidence</dt><dd>{health.incompleteEvidence}</dd></div>
         </dl>
         {health.lastError ? <p className="capture-error">Last error: {health.lastError}</p> : null}
-        {health.lastSuccessAt ? <p>Last confirmed: {new Date(health.lastSuccessAt).toLocaleString()}</p> : null}
+        {health.lastAcknowledgedAt ? <p>Last confirmed: {new Date(health.lastAcknowledgedAt).toLocaleString()}</p> : null}
       </section>
 
       {error ? <ErrorNotice message={error} /> : null}
@@ -91,18 +93,24 @@ export function CaptureWorkspace() {
           <article key={harness.provider}>
             <div>
               <h3>{harness.provider === "codex" ? "Codex" : "GitHub Copilot CLI"}</h3>
-              <p>{harness.configured ? "Configured" : "Not configured"}</p>
-              <code>{harness.configurationPath}</code>
+              <p>
+                {harness.owned
+                  ? "Lineage configured"
+                  : harness.configured
+                    ? "Existing configuration found"
+                    : "Not configured"}
+              </p>
+              <code>{harness.path}</code>
             </div>
             <Button
-              variant={harness.configured ? "quiet" : "primary"}
+              variant={harness.owned ? "quiet" : "primary"}
               disabled={Boolean(working)}
               onClick={() => void action(
                 `Install ${harness.provider}`,
                 () => api.installCapture(repositoryId, harness.provider)
               )}
             >
-              {working === `Install ${harness.provider}` ? "Installing…" : harness.configured ? "Reinstall" : "Install"}
+              {working === `Install ${harness.provider}` ? "Installing…" : harness.owned ? "Reinstall" : "Install"}
             </Button>
           </article>
         ))}
@@ -151,4 +159,3 @@ export function CaptureWorkspace() {
     </main>
   );
 }
-
