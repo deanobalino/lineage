@@ -30,6 +30,9 @@ jobs:
         run: |
           git worktree add --detach "${RUNNER_TEMP}/swift-baseline" \
             105ef5d900a3511496f5b8a39d8ee70b1212bffa
+          rm \
+            "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/CodingHarnessPluginTests.swift" \
+            "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/ProvenanceGraphTests.swift"
           git show \
             d1598a6:Tests/LineageCoreTests/CompatibilityOracleTests.swift \
             > "${RUNNER_TEMP}/swift-baseline/Tests/LineageCoreTests/CompatibilityOracleTests.swift"
