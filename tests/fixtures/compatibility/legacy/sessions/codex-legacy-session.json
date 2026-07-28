@@ -1,0 +1,25 @@
+{
+  "session_id": "stored-legacy-session",
+  "prompt": "Explain the selected line.",
+  "tools_used": [
+    "Read"
+  ],
+  "files_edited": [
+    "src/retry.py"
+  ],
+  "tests_result": "unknown",
+  "last_assistant_message": "The retry ceiling is intentionally bounded.",
+  "git_diff": "",
+  "line_ranges": [
+    {
+      "file": "src/retry.py",
+      "start": 1,
+      "end": 2,
+      "confidence": 0.91,
+      "label": "Recorded"
+    }
+  ],
+  "unknown_future_session_field": {
+    "preserved_by_fixture": true
+  }
+}

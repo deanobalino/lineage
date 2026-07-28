@@ -1,0 +1,1366 @@
+{
+  "agent_trace" : [
+    {
+      "files" : [
+        {
+          "conversations" : [
+            {
+              "contributor" : {
+                "model_id" : "gpt-5-codex",
+                "type" : "ai"
+              },
+              "ranges" : [
+                {
+                  "end_line" : 2,
+                  "start_line" : 1
+                }
+              ],
+              "related" : [
+                {
+                  "type" : "session",
+                  "url" : "lineage:\/\/session\/codex\/legacy-session"
+                },
+                {
+                  "type" : "transcript",
+                  "url" : "file:\/\/\/fixture\/transcripts\/codex-session.jsonl"
+                }
+              ],
+              "url" : "file:\/\/\/fixture\/transcripts\/codex-session.jsonl"
+            }
+          ],
+          "path" : "src\/retry.py"
+        }
+      ],
+      "id" : "<generated-uuid>",
+      "metadata" : {
+        "dev.lineage" : {
+          "files_edited" : [
+            "src\/retry.py"
+          ],
+          "graph_nodes" : 20,
+          "has_raw_telemetry_payload" : false,
+          "provider" : "codex",
+          "provider_display_name" : "Codex",
+          "raw_payload_policy" : "Provider-specific raw payloads remain in .lineage\/provenance\/events.jsonl and session JSON.",
+          "session_id" : "legacy-session",
+          "source" : "codex",
+          "tests_result" : "passed",
+          "tools_used" : [
+            "Bash"
+          ],
+          "turn_id" : "turn-1"
+        }
+      },
+      "timestamp" : "1970-01-01T00:00:00Z",
+      "tool" : {
+        "name" : "codex"
+      },
+      "version" : "0.1.0"
+    },
+    {
+      "files" : [
+        {
+          "conversations" : [
+            {
+              "contributor" : {
+                "type" : "ai"
+              },
+              "ranges" : [
+                {
+                  "end_line" : 2,
+                  "start_line" : 1
+                }
+              ],
+              "related" : [
+                {
+                  "type" : "session",
+                  "url" : "lineage:\/\/session\/codex\/stored-legacy-session"
+                }
+              ],
+              "url" : "lineage:\/\/session\/codex\/stored-legacy-session"
+            }
+          ],
+          "path" : "src\/retry.py"
+        }
+      ],
+      "id" : "<generated-uuid>",
+      "metadata" : {
+        "dev.lineage" : {
+          "files_edited" : [
+            "src\/retry.py"
+          ],
+          "graph_nodes" : 20,
+          "has_raw_telemetry_payload" : false,
+          "provider" : "codex",
+          "provider_display_name" : "Codex",
+          "raw_payload_policy" : "Provider-specific raw payloads remain in .lineage\/provenance\/events.jsonl and session JSON.",
+          "session_id" : "stored-legacy-session",
+          "source" : "codex",
+          "tests_result" : "unknown",
+          "tools_used" : [
+            "Read"
+          ],
+          "turn_id" : null
+        }
+      },
+      "timestamp" : "1970-01-01T00:00:00Z",
+      "tool" : {
+        "name" : "codex"
+      },
+      "version" : "0.1.0"
+    }
+  ],
+  "baseline" : "swift-lineage-core",
+  "counts" : {
+    "agent_traces" : 2,
+    "events" : 9,
+    "graph_edges" : 47,
+    "graph_nodes" : 22,
+    "sessions" : 3,
+    "transcript_messages" : 4
+  },
+  "events" : [
+    {
+      "actor" : "GitHub Copilot CLI",
+      "captured_at" : "2026-06-29T11:00:01Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "session_stop",
+      "hook_event_name" : "SessionEnd",
+      "id" : "event-copilot-end",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "changed_files" : [
+
+        ],
+        "git_diff" : "",
+        "git_head" : "def456"
+      },
+      "provider" : "github-copilot",
+      "provider_event_name" : "SessionEnd",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "copilot-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-2"
+    },
+    {
+      "actor" : "GitHub Copilot CLI",
+      "captured_at" : "2026-06-29T11:00:00Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "agent_stop",
+      "hook_event_name" : "Stop",
+      "id" : "event-copilot-stop",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "raw_provider_payload" : {
+          "sessionId" : "copilot-session",
+          "toolName" : "edit"
+        }
+      },
+      "provider" : "github-copilot",
+      "provider_event_name" : "Stop",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "copilot-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-2"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:05Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "external_constraint",
+      "hook_event_name" : "ExternalConstraint",
+      "id" : "event-legacy-constraint",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "external_constraints" : [
+          {
+            "end_line" : 8,
+            "excerpt" : "Retries must remain bounded.",
+            "file_path" : "SPEC.md",
+            "id" : "constraint-1",
+            "source" : "provider_payload",
+            "start_line" : 4,
+            "summary" : "Bounded retry requirement"
+          }
+        ]
+      },
+      "provider" : "codex",
+      "provider_event_name" : "ExternalConstraint",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:04Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "user_decision",
+      "hook_event_name" : "UserDecision",
+      "human" : "Dean",
+      "id" : "event-legacy-decision",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "decision_consequences" : "Transient failures retry; permanent failures stop.",
+        "selected_option_text" : "Bounded retries"
+      },
+      "provider" : "codex",
+      "provider_event_name" : "UserDecision",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:03Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "assistant_options_presented",
+      "hook_event_name" : "AssistantOptionsPresented",
+      "id" : "event-legacy-options",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "decision_context" : "Choose retry policy.",
+        "options_presented" : [
+          {
+            "id" : "option-1",
+            "rationale" : "Avoid masking failures",
+            "text" : "Bounded retries"
+          },
+          {
+            "id" : "option-2",
+            "rationale" : "Maximize availability",
+            "text" : "Retry forever"
+          }
+        ]
+      },
+      "provider" : "codex",
+      "provider_event_name" : "AssistantOptionsPresented",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:01Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "prompt",
+      "hook_event_name" : "UserPromptSubmit",
+      "id" : "event-legacy-prompt",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "prompt" : "Keep retries bounded.",
+        "raw_provider_payload" : {
+          "future_field" : {
+            "nested" : true
+          }
+        }
+      },
+      "provider" : "codex",
+      "provider_event_name" : "UserPromptSubmit",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "codex-hook"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:00Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "session_start",
+      "hook_event_name" : "SessionStart",
+      "id" : "event-legacy-start",
+      "lineage_schema_version" : "0.1",
+      "model" : "gpt-5-codex",
+      "payload" : {
+        "changed_files" : [
+
+        ],
+        "git_diff" : "",
+        "git_head" : "abc123"
+      },
+      "permission_mode" : "on-request",
+      "provider" : "codex",
+      "provider_event_name" : "SessionStart",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:06Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "session_stop",
+      "hook_event_name" : "Stop",
+      "id" : "event-legacy-stop",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "changed_files" : [
+          "src\/retry.py"
+        ],
+        "git_diff" : "diff --git a\/src\/retry.py b\/src\/retry.py\n--- a\/src\/retry.py\n+++ b\/src\/retry.py\n@@ -1,1 +1,2 @@\n MAX_RETRIES = 5\n+MAX_RETRIES = 7",
+        "git_head" : "abc123",
+        "last_assistant_message" : "Implemented bounded retries.",
+        "tests_detected" : [
+          "pytest tests\/test_retry.py"
+        ],
+        "tests_result" : "passed"
+      },
+      "provider" : "codex",
+      "provider_event_name" : "Stop",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "captured_at" : "2026-06-29T10:00:02Z",
+      "cwd" : "\/fixture\/repo",
+      "event_type" : "pre_tool_use",
+      "hook_event_name" : "PreToolUse",
+      "id" : "event-legacy-tool",
+      "lineage_schema_version" : "0.1",
+      "payload" : {
+        "tool_input" : {
+          "command" : "pytest tests\/test_retry.py"
+        },
+        "tool_name" : "Bash"
+      },
+      "provider" : "codex",
+      "provider_event_name" : "PreToolUse",
+      "repo_root" : "\/fixture\/repo",
+      "session_id" : "legacy-session",
+      "source" : "provider-hook",
+      "turn_id" : "turn-1"
+    }
+  ],
+  "graph" : {
+    "edges" : [
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "tool:f21a7b032439ed3b6e54521f73bf0befd955a46195367d63ced87b62bb365cca",
+        "id" : "edge:00eb7f95ea6cbb1abe91b356874f58f2837b63a9b058b09dc3edb3fecbe087f0",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:05f97a4e567fbc415f444401c6bd5919a49bfb44f6fd78fbb9473713b98c9d31",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "tool:5ebb298b921c2a7299e5c310db1da7187c602062f784b8d9f2f07ed15caf9256"
+      },
+      {
+        "from" : "file:4fea2bbc18bac36b056146f38d4bb2a282e97888374662c474781cc7a3c22cea",
+        "id" : "edge:0750a60e8709a37d864ffaa0d42fa77804b9ce73116b5e0bd4943bdfbd7d384b",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:088959906ab37937e74df9d0cc75cc3175d6ba11b29b4ad0ae229f87808dc1d3",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "tool:b38e42e26b3ef0e8fda6403ede181e9f7bf31d7c720574fe1cabe95fdabb1ac1"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "final_message:f80e8d55321d07e8a0bbdf7c59ebdf389869dec270b2ca5853ea70acb5c9df20",
+        "id" : "edge:0ea6869695ac2f49e5a29dfebcd061fc886a8eb2fe8a82ff785b929280ff6526",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:132f3613478ea0d4088a4f71f5ddb5838bcd5a886534dc7a4e8ac591bb38d72a",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:1864bdcecc9c20a79f26826d6667f1e6f3fab1fe303730cf7cc675aa470656e6",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "decision:be91e694c7153c2d9cb009a0c4389142325c04ecc5116c1d490cb63baef92f68"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:1f6f03e58ec8f062d88eab375aeb75cb8202208ee0ad4517d96d6b37e039ad87",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf"
+      },
+      {
+        "from" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f",
+        "id" : "edge:2809d93109f7e5e35667d66004dd63d43aad413c6356d760b441c4ef745b1808",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f"
+      },
+      {
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:2aa0557a7ff530f74b7952741c2ad72dee29e32d5b1593b56359435b1b0b8ee5",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "final_message:ae3bc19026aba3394d1a8381b53879164025851da7ec6f598f43296b8682c5b7"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:2d127fa431874a06cb37fcb87347ab0848fcc40d64ea800cf8c85a7459bd1af9",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "prompt:81a090040277a514136495bd354bb86fe19c05a0e7bb3530ef2de1b8b589a2b2",
+        "id" : "edge:2ddbf061336678c6beabc18e5ba7f4e2c019c89c8122610cd1151acfed97bd36",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:2f49c89dd37fd2ea32203881c69b7ec4f5eaa8efff0e42c30d4b59d7facfe1f1",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f"
+      },
+      {
+        "from" : "session:e2864b5f8a6c8732209327f28885ae9fcb9ad1271afffd188833d7dec1935ee5",
+        "id" : "edge:314e9333f07db03fd63a7b710c7a30de7836d9cbcc5e50a908305a75f9eeb9ab",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "turn:48c6f55d21e76dc29ff3061ebe58e4de013e5ece7e87683987047a1924b37f1f"
+      },
+      {
+        "from" : "repo:a0d7f8a155a8700b24308305dc4bed6c7560ca6a41ded959877f0215e518d71f",
+        "id" : "edge:333574fd496f17e064eb2d198d642a61e130cb08aad09afb8cf2ab95121de426",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "session:e2864b5f8a6c8732209327f28885ae9fcb9ad1271afffd188833d7dec1935ee5"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:3469fc007a0a94cd10a89bc65c829312253ae6f998fccc9fd2237af07aec7c67",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "prompt:24af2baa2d7d20a12adb7514c6f64439c360109e445b1de175a7d4e0babd1cc0",
+        "id" : "edge:3f5f370a75fa8b5fe6996817b5f818f07718b147d7dbc49f49278d8a72a4053e",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "tool:5ebb298b921c2a7299e5c310db1da7187c602062f784b8d9f2f07ed15caf9256",
+        "id" : "edge:42b79b546773c781fa62e803a16c47b454314c64c22d03baed816d0232530167",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:4342a9a7f6fffae6d01ec77e0377821c11b332c876a5afb0dd25fa0e7f820818",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "file:4fea2bbc18bac36b056146f38d4bb2a282e97888374662c474781cc7a3c22cea"
+      },
+      {
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:4caa5722175ef6aa0e73dbaff249d8892cf268db7fc8ec805f38872add4fcf3b",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e"
+      },
+      {
+        "from" : "repo:a0d7f8a155a8700b24308305dc4bed6c7560ca6a41ded959877f0215e518d71f",
+        "id" : "edge:506c5b8634666da6bf20be7149f196797446ef3cc3e168c483bedb9f7e62c188",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:5309a9c732ca5906f6a56485ffa6518b5a23e57436994ba9fe34ef25cd5900fc",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:5941c6f69743b96ada0d73ae6ef39a59c40377c6fea51a6c760c923b150eee06",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "tool:f21a7b032439ed3b6e54521f73bf0befd955a46195367d63ced87b62bb365cca"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "tool:3f095c70fa2f04d46f32457017a8b22a0ce6bacc9059558eab50e924ac4ac814",
+        "id" : "edge:64420f99ad33a55b5e4961f75d6c39544792ceea7cb21a03f0934b28166b41b9",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:6c077a33df948e33b9405817f18c587ddb6b08f105d4512f85c79b910cc798ff",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "tool:3f095c70fa2f04d46f32457017a8b22a0ce6bacc9059558eab50e924ac4ac814"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:6c1e2ac53a2bf3af9b28afa296cf7cb93bcffc53435bde58b1c690795c9ff656",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:6c6d818e351e0bbefb1661ffc9d2bdd1a676d65b34da6b0b0fdd233c53e5262e",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "file:4fea2bbc18bac36b056146f38d4bb2a282e97888374662c474781cc7a3c22cea"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "prompt:57fc7c3bb8040ac27d1af7b20258c36e51209ad4e154422b2c0f500b738effe1",
+        "id" : "edge:8a9b062da4fb758c1fedac85e2f0d7a1c19a1986b55d2f90ffeada8ef55ac3dd",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "decision:be91e694c7153c2d9cb009a0c4389142325c04ecc5116c1d490cb63baef92f68",
+        "id" : "edge:8ab0904038af96ce9d84446fff99874d883a803b87f91257f06b71ac8ee53b84",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:8bd95f8e7fc0625ded3d0166d84266c0c24367109abed89222f0d272df597851",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:933536314ba8a546b14e18d58d6d95e11880990a3613742ae9c3a73cda49d5cf",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "prompt:57fc7c3bb8040ac27d1af7b20258c36e51209ad4e154422b2c0f500b738effe1"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:95214ab295497fbcae5c171a28d67d425c24444f4a1130ffc49c484f87659bc3",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:a2b5ef6cdaef6234f10955dab7d1afea5297765aaa64d46c27738f4060b7fa2a",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "id" : "edge:a74cc86ea2e14ce074ca47281f736e676f1bd71708ef9369d5eac51d2c3c19af",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "repo:a0d7f8a155a8700b24308305dc4bed6c7560ca6a41ded959877f0215e518d71f",
+        "id" : "edge:a9f0b288dc9b28098bc0a4868235c4b2c523f069b54201375597d2b379efc296",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "file:4fea2bbc18bac36b056146f38d4bb2a282e97888374662c474781cc7a3c22cea"
+      },
+      {
+        "from" : "repo:a0d7f8a155a8700b24308305dc4bed6c7560ca6a41ded959877f0215e518d71f",
+        "id" : "edge:af1a0001deffa607c23ddd6103416fe9a03af454fd06018aaf668a52c6a920d8",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:b80be8b5bcfc82f9ff3c37717d1be94e3f06a9bcc7b85996f9a2bc77d49c582f",
+        "kind" : "touches",
+        "metadata" : {
+
+        },
+        "to" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:bc3c8b792f190792d3c7a48391d57cb767cb9d826e8953afb6aaa585d60d9fdb",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "final_message:f80e8d55321d07e8a0bbdf7c59ebdf389869dec270b2ca5853ea70acb5c9df20"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:be5c8486141b65d6ba9b8881fb08fb82ab5516f69b54e46140dfba26336c4495",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "test:a54f9134ec92a520c3a182eb551ef8e9c2dddcae3702892a22e547f64e385460"
+      },
+      {
+        "from" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "id" : "edge:c75885c80ccd0c68dbc39107cc894f249deb32d9131da98448a628d708be0d66",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "prompt:81a090040277a514136495bd354bb86fe19c05a0e7bb3530ef2de1b8b589a2b2"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "test:a54f9134ec92a520c3a182eb551ef8e9c2dddcae3702892a22e547f64e385460",
+        "id" : "edge:cbc6fe5cc18324d07082b99e59bcf58ca78d442648c497bb0453d1924aa07eee",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "final_message:ae3bc19026aba3394d1a8381b53879164025851da7ec6f598f43296b8682c5b7",
+        "id" : "edge:ccc9a61c0e5d50fb85450ffe4a467cb9c3523d3c50819ce9416277013a165aa3",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:ceb312dc75ae2b7d7335c21c4a592726633632bfb75581fe4a221e1da1250691",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "constraint:e3df77930659c18510411265027881d24eb6d76eb16ba21aee1b151d4d720870"
+      },
+      {
+        "confidence" : 0.91000000000000003,
+        "from" : "tool:b38e42e26b3ef0e8fda6403ede181e9f7bf31d7c720574fe1cabe95fdabb1ac1",
+        "id" : "edge:d10b236eabf2361964f01a33f7128694356d7de1b91a601bb785b03888aecd09",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "confidence" : 0.92000000000000004,
+        "from" : "constraint:e3df77930659c18510411265027881d24eb6d76eb16ba21aee1b151d4d720870",
+        "id" : "edge:de388b982ceeb29db86347b2cb1a5733cad3b381ca5706dbe33a96b10927bb21",
+        "kind" : "evidenced_by",
+        "metadata" : {
+
+        },
+        "to" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f"
+      },
+      {
+        "from" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f",
+        "id" : "edge:e1a7ba3e7ce2c2a2ad400a6435d9a3e418745c36d12c2e3d6597cac839939aae",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf"
+      },
+      {
+        "from" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "id" : "edge:f84879464de7bf3fba273ddcc28f006609c623a328f03fb1aef272610db6a77e",
+        "kind" : "contains",
+        "metadata" : {
+
+        },
+        "to" : "prompt:24af2baa2d7d20a12adb7514c6f64439c360109e445b1de175a7d4e0babd1cc0"
+      }
+    ],
+    "nodes" : [
+      {
+        "content_hash" : "fe1e88003b65fb8c4a3b4d747ba6f4bf39c7fd85acd7d21075ba5a879535719d",
+        "event_type" : "constraint",
+        "id" : "constraint:e3df77930659c18510411265027881d24eb6d76eb16ba21aee1b151d4d720870",
+        "kind" : "constraint",
+        "label" : "SPEC.md:4-8",
+        "metadata" : {
+          "preview" : "Bounded retry requirement"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "b2b158574372fbbb8cf8bbb7ddcd636d92bafa72a2d6b6f78b37a405ed4cc3d4",
+        "event_type" : "decision",
+        "id" : "decision:be91e694c7153c2d9cb009a0c4389142325c04ecc5116c1d490cb63baef92f68",
+        "kind" : "decision",
+        "label" : "user_selected_option",
+        "metadata" : {
+          "preview" : "Choose retry policy."
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "file_path" : "src\/retry.py",
+        "id" : "file:4fea2bbc18bac36b056146f38d4bb2a282e97888374662c474781cc7a3c22cea",
+        "kind" : "file",
+        "label" : "src\/retry.py",
+        "metadata" : {
+
+        },
+        "repo_root" : "\/fixture\/repo"
+      },
+      {
+        "content_hash" : "18f6886f5e174e46a0dc1b7f124de3ed64873d1411a2166c1ecc0cc598dd511e",
+        "event_type" : "final_message",
+        "id" : "final_message:f80e8d55321d07e8a0bbdf7c59ebdf389869dec270b2ca5853ea70acb5c9df20",
+        "kind" : "final_message",
+        "label" : "Final message",
+        "metadata" : {
+          "preview" : "Implemented bounded retries."
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "4cd17fd9e4666375cad51c96c3c0b7705f197b4894376caa0aa77cccad41a1fd",
+        "event_type" : "final_message",
+        "id" : "final_message:ae3bc19026aba3394d1a8381b53879164025851da7ec6f598f43296b8682c5b7",
+        "kind" : "final_message",
+        "label" : "Final message",
+        "metadata" : {
+          "preview" : "The retry ceiling is intentionally bounded."
+        },
+        "provider" : "codex",
+        "session_id" : "stored-legacy-session"
+      },
+      {
+        "end_line" : 1,
+        "file_path" : "src\/retry.py",
+        "id" : "line:e034a104f29e6dc21b9b7e8822ffd37e8dc2fd4ed082005805d32d8a22f550bf",
+        "kind" : "line",
+        "label" : "src\/retry.py:1",
+        "metadata" : {
+
+        },
+        "repo_root" : "\/fixture\/repo",
+        "start_line" : 1
+      },
+      {
+        "end_line" : 2,
+        "file_path" : "src\/retry.py",
+        "id" : "line:b1ecf5fe16d504f0f02cf6886faa3477b9bdd4a7029e21989b9353d531e8332f",
+        "kind" : "line",
+        "label" : "src\/retry.py:2",
+        "metadata" : {
+
+        },
+        "repo_root" : "\/fixture\/repo",
+        "start_line" : 2
+      },
+      {
+        "content_hash" : "9ec46c97a4b1563e179165161be6de25ea53566549af787d91cadeba21a54822",
+        "event_type" : "prompt",
+        "id" : "prompt:24af2baa2d7d20a12adb7514c6f64439c360109e445b1de175a7d4e0babd1cc0",
+        "kind" : "prompt",
+        "label" : "Prompt",
+        "metadata" : {
+          "preview" : "Keep retries bounded."
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "7a1b035d76f9ec1dfe2a323f82bcea57689f03575fbb53cb0f3ff21f2efa5f0f",
+        "event_type" : "prompt",
+        "id" : "prompt:57fc7c3bb8040ac27d1af7b20258c36e51209ad4e154422b2c0f500b738effe1",
+        "kind" : "prompt",
+        "label" : "UserPromptSubmit",
+        "metadata" : {
+          "preview" : "UserPromptSubmit"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "b3cd8e6dcdaf443f89fee91d6fead4a5f9496cef4c64ac83c9bf171ba14eff51",
+        "event_type" : "prompt",
+        "id" : "prompt:81a090040277a514136495bd354bb86fe19c05a0e7bb3530ef2de1b8b589a2b2",
+        "kind" : "prompt",
+        "label" : "Prompt",
+        "metadata" : {
+          "preview" : "Explain the selected line."
+        },
+        "provider" : "codex",
+        "session_id" : "stored-legacy-session"
+      },
+      {
+        "end_line" : 2,
+        "file_path" : "src\/retry.py",
+        "id" : "range:e18d86e4196925c2e69679da382fe1cbac44d7473eddf1b2632bb9fd9a62665f",
+        "kind" : "range",
+        "label" : "src\/retry.py:1-2",
+        "metadata" : {
+          "label" : "Recorded"
+        },
+        "repo_root" : "\/fixture\/repo",
+        "start_line" : 1
+      },
+      {
+        "id" : "repo:a0d7f8a155a8700b24308305dc4bed6c7560ca6a41ded959877f0215e518d71f",
+        "kind" : "repository",
+        "label" : "repo",
+        "metadata" : {
+
+        },
+        "repo_root" : "\/fixture\/repo"
+      },
+      {
+        "id" : "session:e2864b5f8a6c8732209327f28885ae9fcb9ad1271afffd188833d7dec1935ee5",
+        "kind" : "session",
+        "label" : "GitHub Copilot CLI copilot-sess",
+        "metadata" : {
+          "actor" : "GitHub Copilot CLI",
+          "lineage.session_path" : "github-copilot-copilot-session.json",
+          "model" : null,
+          "source" : "github-copilot"
+        },
+        "provider" : "github-copilot",
+        "repo_root" : "\/fixture\/repo",
+        "session_id" : "copilot-session",
+        "turn_id" : "turn-2"
+      },
+      {
+        "id" : "session:3fa70395d4ca9249d2fcd6967c0bf95dde7d65778b698ec8bcd59edd43729550",
+        "kind" : "session",
+        "label" : "Codex legacy-sessi",
+        "metadata" : {
+          "actor" : "Codex",
+          "lineage.session_path" : "codex-legacy-session.json",
+          "model" : "gpt-5-codex",
+          "source" : "codex"
+        },
+        "provider" : "codex",
+        "repo_root" : "\/fixture\/repo",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "id" : "session:4352ccbbafccb4658490fe74cc2d331e81bb826a82ae0cbf44e6904904d3701d",
+        "kind" : "session",
+        "label" : "Codex stored-legac",
+        "metadata" : {
+          "actor" : "Codex",
+          "lineage.session_path" : "codex-stored-legacy-session.json",
+          "model" : null,
+          "source" : "codex"
+        },
+        "provider" : "codex",
+        "repo_root" : "\/fixture\/repo",
+        "session_id" : "stored-legacy-session"
+      },
+      {
+        "content_hash" : "bbd7fd5ffea964bad4b92fa3166c013deb72580951bae7b108fd38483983e17d",
+        "event_type" : "test",
+        "id" : "test:a54f9134ec92a520c3a182eb551ef8e9c2dddcae3702892a22e547f64e385460",
+        "kind" : "test",
+        "label" : "pytest tests\/test_retry.py",
+        "metadata" : {
+          "preview" : "pytest tests\/test_retry.py\nResult: passed"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "f27936b03f2c99c8de7a018b86ac39601d34406c60f7299696aa2bc9a0beca87",
+        "event_type" : "tool",
+        "id" : "tool:3f095c70fa2f04d46f32457017a8b22a0ce6bacc9059558eab50e924ac4ac814",
+        "kind" : "tool",
+        "label" : "Bash",
+        "metadata" : {
+          "preview" : "PreToolUse"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "29a5a143734ae30801c113859f15c3f8d862284a0f83fbec566b5950a4dd18fa",
+        "event_type" : "tool",
+        "id" : "tool:5ebb298b921c2a7299e5c310db1da7187c602062f784b8d9f2f07ed15caf9256",
+        "kind" : "tool",
+        "label" : "pytest tests\/test_retry.py",
+        "metadata" : {
+          "preview" : "pytest tests\/test_retry.py"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "d1e9567da9a8a4b0c43da0791da1d2594cf5d7b78547fea132d06bccc1b06091",
+        "event_type" : "tool",
+        "id" : "tool:f21a7b032439ed3b6e54521f73bf0befd955a46195367d63ced87b62bb365cca",
+        "kind" : "tool",
+        "label" : "Bash",
+        "metadata" : {
+          "preview" : "Bash"
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      },
+      {
+        "content_hash" : "9b9a8d05a7ec353bda84f9c1bb3178c299de3001b5e970508ddc889c487f92ca",
+        "event_type" : "tool",
+        "id" : "tool:b38e42e26b3ef0e8fda6403ede181e9f7bf31d7c720574fe1cabe95fdabb1ac1",
+        "kind" : "tool",
+        "label" : "Read",
+        "metadata" : {
+          "preview" : "Read"
+        },
+        "provider" : "codex",
+        "session_id" : "stored-legacy-session"
+      },
+      {
+        "id" : "turn:48c6f55d21e76dc29ff3061ebe58e4de013e5ece7e87683987047a1924b37f1f",
+        "kind" : "turn",
+        "label" : "Turn turn-2",
+        "metadata" : {
+
+        },
+        "provider" : "github-copilot",
+        "session_id" : "copilot-session",
+        "turn_id" : "turn-2"
+      },
+      {
+        "id" : "turn:6afe019d444041d8ec01f39712ef0b2ab31a6a7b0e6f15e01fb064b400f9f99e",
+        "kind" : "turn",
+        "label" : "Turn turn-1",
+        "metadata" : {
+
+        },
+        "provider" : "codex",
+        "session_id" : "legacy-session",
+        "turn_id" : "turn-1"
+      }
+    ]
+  },
+  "hook_config_hashes" : {
+    "codex" : "80f6c84746f240f89961ccb3febed129b854b8aba48608095bf1e8f6cce396a1",
+    "github_copilot" : "68b2da2bc43333e982e484c7bb781343a80df7a8f4214306dfefc05ef87ced28"
+  },
+  "redaction" : [
+    {
+      "actual" : "key [REDACTED]",
+      "expected" : "key [REDACTED]",
+      "id" : "openai-key"
+    },
+    {
+      "actual" : "Authorization: [REDACTED]",
+      "expected" : "Authorization: [REDACTED]",
+      "id" : "bearer"
+    },
+    {
+      "actual" : "[REDACTED]",
+      "expected" : "[REDACTED]",
+      "id" : "assignment"
+    },
+    {
+      "actual" : "MAX_RETRIES = 7",
+      "expected" : "MAX_RETRIES = 7",
+      "id" : "ordinary-text"
+    }
+  ],
+  "schema_version" : 1,
+  "session_evidence" : {
+    "commandsRun" : [
+      "pytest tests\/test_retry.py"
+    ],
+    "filesEdited" : [
+      "src\/retry.py"
+    ],
+    "finalMessage" : "Implemented bounded retries.",
+    "gitDiff" : "diff --git a\/src\/retry.py b\/src\/retry.py\n--- a\/src\/retry.py\n+++ b\/src\/retry.py\n@@ -1,1 +1,2 @@\n MAX_RETRIES = 5\n+MAX_RETRIES = 7",
+    "lineRanges" : [
+      {
+        "confidence" : 0.92000000000000004,
+        "end" : 2,
+        "file" : "src\/retry.py",
+        "label" : "Recorded",
+        "start" : 1
+      }
+    ],
+    "messages" : [
+      {
+        "body" : "Use [REDACTED] while debugging.",
+        "id" : "message-user",
+        "role" : "user",
+        "timestamp" : "2026-06-29T10:00:01Z",
+        "title" : "User"
+      },
+      {
+        "body" : "{\"cmd\":\"pytest tests\/test_retry.py\"}",
+        "id" : "tool-call",
+        "role" : "tool",
+        "timestamp" : "2026-06-29T10:00:02Z",
+        "title" : "exec_command"
+      },
+      {
+        "body" : "3 passed",
+        "id" : "tool-call",
+        "role" : "tool",
+        "timestamp" : "2026-06-29T10:00:03Z",
+        "title" : "Tool result"
+      },
+      {
+        "body" : "Implemented the bounded retry policy.",
+        "id" : "message-assistant",
+        "role" : "assistant",
+        "timestamp" : "2026-06-29T10:00:04Z",
+        "title" : "Assistant"
+      }
+    ],
+    "model" : "gpt-5-codex",
+    "permissionMode" : "on-request",
+    "permissionRequests" : [
+
+    ],
+    "prompt" : "Keep retries bounded.",
+    "provider" : "Codex",
+    "sessionID" : "legacy-session",
+    "source" : "codex",
+    "testsResult" : "passed",
+    "testsRun" : [
+      "pytest tests\/test_retry.py"
+    ],
+    "timeline" : [
+      {
+        "detail" : "Keep retries bounded.",
+        "group" : "Prompt",
+        "id" : "<generated-uuid>",
+        "title" : "User prompt"
+      },
+      {
+        "detail" : "Tool used by Codex.",
+        "group" : "Tool",
+        "id" : "<generated-uuid>",
+        "title" : "Bash"
+      },
+      {
+        "detail" : "pytest tests\/test_retry.py",
+        "group" : "Tool",
+        "id" : "<generated-uuid>",
+        "title" : "Command"
+      },
+      {
+        "detail" : "Choose retry policy.\nSelected: Bounded retries\nConsequences: Transient failures retry; permanent failures stop.",
+        "group" : "Decision",
+        "id" : "<generated-uuid>",
+        "title" : "user_selected_option"
+      },
+      {
+        "detail" : "Bounded retry requirement",
+        "group" : "Constraint",
+        "id" : "<generated-uuid>",
+        "title" : "SPEC.md:4-8"
+      },
+      {
+        "detail" : "Result: passed",
+        "group" : "Test",
+        "id" : "<generated-uuid>",
+        "title" : "pytest tests\/test_retry.py"
+      },
+      {
+        "detail" : "Implemented bounded retries.",
+        "group" : "Final response",
+        "id" : "<generated-uuid>",
+        "title" : "Final provider message"
+      }
+    ],
+    "toolsUsed" : [
+      "Bash"
+    ],
+    "transcriptAvailable" : true,
+    "transcriptPath" : "\/fixture\/transcripts\/codex-session.jsonl"
+  },
+  "session_json" : "{\n  \"commandsRun\" : [\n    \"pytest tests\\\/test_retry.py\"\n  ],\n  \"filesEdited\" : [\n    \"src\\\/retry.py\"\n  ],\n  \"finalMessage\" : \"Implemented bounded retries.\",\n  \"gitDiff\" : \"diff --git a\\\/src\\\/retry.py b\\\/src\\\/retry.py\\n--- a\\\/src\\\/retry.py\\n+++ b\\\/src\\\/retry.py\\n@@ -1,1 +1,2 @@\\n MAX_RETRIES = 5\\n+MAX_RETRIES = 7\",\n  \"lineRanges\" : [\n    {\n      \"confidence\" : 0.92,\n      \"end\" : 2,\n      \"file\" : \"src\\\/retry.py\",\n      \"label\" : \"Recorded\",\n      \"start\" : 1\n    }\n  ],\n  \"messages\" : [\n    {\n      \"body\" : \"Use [REDACTED] while debugging.\",\n      \"id\" : \"message-user\",\n      \"role\" : \"user\",\n      \"timestamp\" : \"2026-06-29T10:00:01Z\",\n      \"title\" : \"User\"\n    },\n    {\n      \"body\" : \"{\\\"cmd\\\":\\\"pytest tests\\\/test_retry.py\\\"}\",\n      \"id\" : \"tool-call\",\n      \"role\" : \"tool\",\n      \"timestamp\" : \"2026-06-29T10:00:02Z\",\n      \"title\" : \"exec_command\"\n    },\n    {\n      \"body\" : \"3 passed\",\n      \"id\" : \"tool-call\",\n      \"role\" : \"tool\",\n      \"timestamp\" : \"2026-06-29T10:00:03Z\",\n      \"title\" : \"Tool result\"\n    },\n    {\n      \"body\" : \"Implemented the bounded retry policy.\",\n      \"id\" : \"message-assistant\",\n      \"role\" : \"assistant\",\n      \"timestamp\" : \"2026-06-29T10:00:04Z\",\n      \"title\" : \"Assistant\"\n    }\n  ],\n  \"model\" : \"gpt-5-codex\",\n  \"permissionMode\" : \"on-request\",\n  \"permissionRequests\" : [\n\n  ],\n  \"prompt\" : \"Keep retries bounded.\",\n  \"provider\" : \"Codex\",\n  \"sessionID\" : \"legacy-session\",\n  \"source\" : \"codex\",\n  \"testsResult\" : \"passed\",\n  \"testsRun\" : [\n    \"pytest tests\\\/test_retry.py\"\n  ],\n  \"timeline\" : [\n    {\n      \"detail\" : \"Keep retries bounded.\",\n      \"group\" : \"Prompt\",\n      \"id\" : \"A6A5C5D1-70D0-4A95-859A-1AE324D1754A\",\n      \"title\" : \"User prompt\"\n    },\n    {\n      \"detail\" : \"Tool used by Codex.\",\n      \"group\" : \"Tool\",\n      \"id\" : \"E6DEFF7D-0822-486C-BEC8-FACD67B9241E\",\n      \"title\" : \"Bash\"\n    },\n    {\n      \"detail\" : \"pytest tests\\\/test_retry.py\",\n      \"group\" : \"Tool\",\n      \"id\" : \"1721A7A5-6DE2-4594-A36D-80C84EEDE0F0\",\n      \"title\" : \"Command\"\n    },\n    {\n      \"detail\" : \"Choose retry policy.\\nSelected: Bounded retries\\nConsequences: Transient failures retry; permanent failures stop.\",\n      \"group\" : \"Decision\",\n      \"id\" : \"1B3ACDFB-F75A-4A1A-B4D3-0F10314F814B\",\n      \"title\" : \"user_selected_option\"\n    },\n    {\n      \"detail\" : \"Bounded retry requirement\",\n      \"group\" : \"Constraint\",\n      \"id\" : \"E5B0D9C0-EDB8-4FA1-8FAF-B34B0E727C06\",\n      \"title\" : \"SPEC.md:4-8\"\n    },\n    {\n      \"detail\" : \"Result: passed\",\n      \"group\" : \"Test\",\n      \"id\" : \"3C14F40F-9B6E-4E62-9EC5-E179D9E69AF0\",\n      \"title\" : \"pytest tests\\\/test_retry.py\"\n    },\n    {\n      \"detail\" : \"Implemented bounded retries.\",\n      \"group\" : \"Final response\",\n      \"id\" : \"2B179E5E-3BF7-4D48-8192-CA22AF42B0CE\",\n      \"title\" : \"Final provider message\"\n    }\n  ],\n  \"toolsUsed\" : [\n    \"Bash\"\n  ],\n  \"transcriptAvailable\" : true,\n  \"transcriptPath\" : \"\\\/fixture\\\/transcripts\\\/codex-session.jsonl\"\n}",
+  "session_markdown" : "# Lineage Session Evidence\n\nProvider: Codex\nSource: codex\nSession: legacy-session\nModel: gpt-5-codex\nPermission mode: on-request\nCommit: \nTranscript path: \/fixture\/transcripts\/codex-session.jsonl\nTranscript available: yes\n\nNote: This export contains captured provider transcript\/events and Git evidence only. It does not include or claim private model reasoning.\n\n## Prompt\n\nKeep retries bounded.\n\n## Final Message\n\nImplemented bounded retries.\n\n## Tools\n\n- Bash\n\n## Commands\n\n- `pytest tests\/test_retry.py`\n\n## Permissions\n\n\n\n## Tests\n\nResult: passed\n\n- `pytest tests\/test_retry.py`\n\n## Files Edited\n\n- src\/retry.py\n\n## Line Ranges\n\n- src\/retry.py:1-2 (92%, Recorded)\n\n## Event Timeline\n\n- [Prompt] User prompt: Keep retries bounded.\n- [Tool] Bash: Tool used by Codex.\n- [Tool] Command: pytest tests\/test_retry.py\n- [Decision] user_selected_option: Choose retry policy.\nSelected: Bounded retries\nConsequences: Transient failures retry; permanent failures stop.\n- [Constraint] SPEC.md:4-8: Bounded retry requirement\n- [Test] pytest tests\/test_retry.py: Result: passed\n- [Final response] Final provider message: Implemented bounded retries.\n\n## Transcript\n\n### User\n\nUse [REDACTED] while debugging.\n\n### exec_command\n\n{\"cmd\":\"pytest tests\/test_retry.py\"}\n\n### Tool result\n\n3 passed\n\n### Assistant\n\nImplemented the bounded retry policy.\n\n## Git Diff\n\n```diff\ndiff --git a\/src\/retry.py b\/src\/retry.py\n--- a\/src\/retry.py\n+++ b\/src\/retry.py\n@@ -1,1 +1,2 @@\n MAX_RETRIES = 5\n+MAX_RETRIES = 7\n```",
+  "sessions" : [
+    {
+      "actor" : "GitHub Copilot CLI",
+      "commands_run" : [
+
+      ],
+      "decisions" : [
+
+      ],
+      "external_constraints" : [
+
+      ],
+      "files_edited" : [
+
+      ],
+      "git_diff" : "",
+      "human_reviewer" : "Unknown",
+      "last_assistant_message" : "",
+      "line_ranges" : [
+
+      ],
+      "permission_requests" : [
+
+      ],
+      "prompt" : "",
+      "provider" : "github-copilot",
+      "provider_display_name" : "GitHub Copilot CLI",
+      "reasoning_summary" : "Recorded GitHub Copilot CLI provenance captured tool usage, edits, tests, and final session evidence.",
+      "session_id" : "copilot-session",
+      "source" : "github-copilot",
+      "tests_result" : "unknown",
+      "tests_run" : [
+
+      ],
+      "tools_used" : [
+
+      ],
+      "turn_id" : "turn-2"
+    },
+    {
+      "actor" : "Codex",
+      "commands_run" : [
+        "pytest tests\/test_retry.py"
+      ],
+      "decisions" : [
+        {
+          "alternatives" : [
+            {
+              "id" : "option-1",
+              "rationale" : "Avoid masking failures",
+              "text" : "Bounded retries"
+            },
+            {
+              "id" : "option-2",
+              "rationale" : "Maximize availability",
+              "text" : "Retry forever"
+            }
+          ],
+          "consequences" : "Transient failures retry; permanent failures stop.",
+          "context" : "Choose retry policy.",
+          "evidence" : [
+            "UserDecision"
+          ],
+          "id" : "<generated-uuid>",
+          "kind" : "user_selected_option",
+          "selected_option_text" : "Bounded retries"
+        }
+      ],
+      "external_constraints" : [
+        {
+          "end_line" : 8,
+          "excerpt" : "Retries must remain bounded.",
+          "file_path" : "SPEC.md",
+          "id" : "constraint-1",
+          "source" : "provider_payload",
+          "start_line" : 4,
+          "summary" : "Bounded retry requirement"
+        }
+      ],
+      "files_edited" : [
+        "src\/retry.py"
+      ],
+      "git_diff" : "diff --git a\/src\/retry.py b\/src\/retry.py\n--- a\/src\/retry.py\n+++ b\/src\/retry.py\n@@ -1,1 +1,2 @@\n MAX_RETRIES = 5\n+MAX_RETRIES = 7",
+      "human" : "Dean",
+      "human_reviewer" : "Unknown",
+      "last_assistant_message" : "Implemented bounded retries.",
+      "line_ranges" : [
+        {
+          "confidence" : 0.92000000000000004,
+          "end" : 2,
+          "file" : "src\/retry.py",
+          "label" : "Recorded",
+          "start" : 1
+        }
+      ],
+      "model" : "gpt-5-codex",
+      "permission_mode" : "on-request",
+      "permission_requests" : [
+
+      ],
+      "prompt" : "Keep retries bounded.",
+      "provider" : "codex",
+      "provider_display_name" : "Codex",
+      "reasoning_summary" : "Codex acted on the captured prompt: Keep retries bounded.",
+      "session_id" : "legacy-session",
+      "source" : "codex",
+      "tests_result" : "passed",
+      "tests_run" : [
+        "pytest tests\/test_retry.py"
+      ],
+      "tools_used" : [
+        "Bash"
+      ],
+      "transcript_path" : "\/fixture\/transcripts\/codex-session.jsonl",
+      "turn_id" : "turn-1"
+    },
+    {
+      "actor" : "Codex",
+      "commands_run" : [
+
+      ],
+      "decisions" : [
+
+      ],
+      "external_constraints" : [
+
+      ],
+      "files_edited" : [
+        "src\/retry.py"
+      ],
+      "git_diff" : "",
+      "human_reviewer" : "Unknown",
+      "last_assistant_message" : "The retry ceiling is intentionally bounded.",
+      "line_ranges" : [
+        {
+          "confidence" : 0.91000000000000003,
+          "end" : 2,
+          "file" : "src\/retry.py",
+          "label" : "Recorded",
+          "start" : 1
+        }
+      ],
+      "permission_requests" : [
+
+      ],
+      "prompt" : "Explain the selected line.",
+      "provider" : "codex",
+      "provider_display_name" : "Codex",
+      "reasoning_summary" : "",
+      "session_id" : "stored-legacy-session",
+      "source" : "codex",
+      "tests_result" : "unknown",
+      "tests_run" : [
+
+      ],
+      "tools_used" : [
+        "Read"
+      ]
+    }
+  ]
+}

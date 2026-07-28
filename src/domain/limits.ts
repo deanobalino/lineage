@@ -1,0 +1,13 @@
+export const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024;
+export const MAX_TRANSCRIPT_METADATA_BYTES = 256 * 1024;
+export const MAX_TRANSCRIPT_MESSAGES = 5_000;
+export const MAX_TRANSCRIPT_LINES = 20_000;
+export const MAX_SESSION_FILES = 5_000;
+export const MAX_SESSION_BYTES = 8 * 1024 * 1024;
+
+export const MAX_GRAPH_SESSIONS = 500;
+export const MAX_GRAPH_EVENTS = 5_000;
+export const MAX_GRAPH_SOURCE_FILES = 500;
+export const MAX_GRAPH_SOURCE_BYTES = 4 * 1024 * 1024;
+export const MAX_GRAPH_NODES = 25_000;
+export const MAX_GRAPH_EDGES = 75_000;

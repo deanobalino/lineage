@@ -1,0 +1,5 @@
+{"timestamp":"2026-06-29T10:00:00Z","type":"session_meta","payload":{"id":"legacy-session","cwd":"/fixture/repo","model":"gpt-5-codex"}}
+{"timestamp":"2026-06-29T10:00:01Z","type":"response_item","payload":{"id":"message-user","type":"user_message","message":"Use token=super-secret-value-1234567890 while debugging."}}
+{"timestamp":"2026-06-29T10:00:02Z","type":"response_item","payload":{"id":"tool-call","type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"pytest tests/test_retry.py\"}"}}
+{"timestamp":"2026-06-29T10:00:03Z","type":"response_item","payload":{"call_id":"tool-call","type":"function_call_output","output":"3 passed"}}
+{"timestamp":"2026-06-29T10:00:04Z","type":"response_item","payload":{"id":"message-assistant","type":"agent_message","message":"Implemented the bounded retry policy."}}
