@@ -14,6 +14,7 @@ import {
   linkEvents,
   loadSessionEvidence,
   ProvenanceStore,
+  recoverCodexTranscripts,
   redact,
   sessionEvidenceJson,
   sessionEvidenceMarkdown,
@@ -274,5 +275,38 @@ describe("compatibility semantics", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/
     );
     expect(agentTraceJsonl(records).endsWith("\n")).toBe(true);
+  });
+
+  it("recovers only repository-matched Codex transcripts from approved roots", async () => {
+    const root = await materialize();
+    const transcripts = join(root, "approved-transcripts");
+    await mkdir(transcripts, { recursive: true });
+    const fixture = await readFile(
+      join(fixtureRoot, "transcripts/codex-session.jsonl"),
+      "utf8"
+    );
+    await writeFile(
+      join(transcripts, "matched.jsonl"),
+      fixture.replace("/fixture/repo", root),
+      "utf8"
+    );
+    await writeFile(
+      join(transcripts, "wrong-repository.jsonl"),
+      fixture
+        .replace('"legacy-session"', '"wrong-session"')
+        .replace("/fixture/repo", join(root, "elsewhere")),
+      "utf8"
+    );
+
+    expect(await recoverCodexTranscripts(root, [transcripts])).toEqual({
+      imported: 1,
+      scanned: 2
+    });
+    expect(await recoverCodexTranscripts(root, [transcripts])).toEqual({
+      imported: 0,
+      scanned: 2
+    });
+    expect((await new ProvenanceStore(root).sessions()).map((session) => session.sessionId))
+      .toContain("legacy-session");
   });
 });

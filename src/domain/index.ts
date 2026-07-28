@@ -1,4 +1,5 @@
 export * from "./codec.js";
+export * from "./codex-recovery.js";
 export * from "./evidence.js";
 export * from "./explanation.js";
 export * from "./exports.js";

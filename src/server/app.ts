@@ -17,10 +17,18 @@ import {
   linkRepository,
   loadSessionEvidence,
   ProvenanceStore,
+  recoverCodexTranscripts,
   sessionEvidenceJson,
   sessionEvidenceMarkdown,
   type ProvenanceSession
 } from "../domain/index.js";
+import { writeCaptureClientConfig } from "../capture/client.js";
+import {
+  harnessStatus,
+  installCaptureExecutable,
+  installHarness,
+  type HarnessProvider
+} from "../capture/hooks.js";
 import { CredentialStore, type BootstrapSecrets } from "./access/credentials.js";
 import {
   LoginThrottle,
@@ -29,6 +37,8 @@ import {
 } from "./access/sessions.js";
 import type { ServerConfig } from "./config.js";
 import { resetDemoRepository } from "./demo/demo-repository.js";
+import { buildCaptureApp } from "./capture/capture-app.js";
+import { CaptureService } from "./capture/capture-service.js";
 import { GitError, GitService } from "./git/git-service.js";
 import {
   parseBlame,
@@ -52,10 +62,12 @@ export interface AppServices {
   sessions: SessionStore;
   registry: RepositoryRegistry;
   git: GitService;
+  capture: CaptureService;
 }
 
 export interface BuiltApp {
   app: FastifyInstance;
+  captureApp: FastifyInstance;
   bootstrap: BootstrapSecrets;
   services: AppServices;
 }
@@ -101,6 +113,9 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     git
   );
   await registry.initialize();
+  const capture = new CaptureService(config.stateDirectory, registry);
+  await capture.initialize();
+  const captureApp = buildCaptureApp(credentials, capture);
   const requestSessions = new WeakMap<FastifyRequest, OperatorSession>();
   const repositoryMutations = new Map<string, Promise<void>>();
   const publicPaths = new Set(["/api/v1/health", "/api/v1/auth/login"]);
@@ -533,6 +548,78 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     return { repository: record, reset: true };
   });
 
+  app.get("/api/v1/capture/status", async () => capture.health());
+
+  app.get("/api/v1/repositories/:id/capture", {
+    schema: { params: IdParams }
+  }, async (request) => {
+    const record = await repository(request, registry);
+    return {
+      harnesses: await Promise.all([
+        harnessStatus(record.root, "codex"),
+        harnessStatus(record.root, "github-copilot")
+      ]),
+      health: await capture.health()
+    };
+  });
+
+  app.post("/api/v1/repositories/:id/capture/install", {
+    schema: {
+      params: IdParams,
+      body: Type.Object({
+        provider: Type.Union([
+          Type.Literal("codex"),
+          Type.Literal("github-copilot")
+        ])
+      })
+    }
+  }, async (request) => {
+    const record = await repository(request, registry);
+    const provider = (request.body as { provider: HarnessProvider }).provider;
+    const source = process.env["LINEAGE_CAPTURE_EXECUTABLE"] ??
+      join(process.cwd(), "dist", "lineage-capture.mjs");
+    const executable = await installCaptureExecutable(source, config.stateDirectory);
+    const token = await credentials.rotateCapture();
+    await writeCaptureClientConfig(config.stateDirectory, {
+      version: 1,
+      endpoint: `http://${config.captureHost}:${config.capturePort}/api/v1/capture`,
+      token,
+      outboxDirectory: join(config.stateDirectory, "capture-outbox"),
+      baselineDirectory: join(config.stateDirectory, "capture-baselines")
+    });
+    const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(executable)}`;
+    return {
+      installed: await installHarness(record.root, provider, command),
+      health: await capture.health()
+    };
+  });
+
+  app.post("/api/v1/capture/replay", async () => ({
+    ...(await capture.replay()),
+    health: await capture.health()
+  }));
+
+  app.post("/api/v1/capture/deadletters", {
+    schema: {
+      body: Type.Object({
+        action: Type.Union([Type.Literal("retry"), Type.Literal("discard")])
+      })
+    }
+  }, async (request) => {
+    const body = request.body as { action: "retry" | "discard" };
+    const affected =
+      body.action === "retry"
+        ? await capture.outbox.retryDeadLetters()
+        : await capture.outbox.discardDeadLetters();
+    if (body.action === "retry") await capture.replay();
+    return { action: body.action, affected, health: await capture.health() };
+  });
+
+  app.post("/api/v1/capture/incomplete/acknowledge", async () => {
+    await capture.clearIncompleteEvidence();
+    return { acknowledged: true, health: await capture.health() };
+  });
+
   app.post("/api/v1/repositories/:id/follow-up", {
     schema: {
       params: IdParams,
@@ -571,7 +658,19 @@ export async function buildApp(config: ServerConfig): Promise<BuiltApp> {
     return { answer: answerFollowUp(body.question, explanation) };
   });
 
-  return { app, bootstrap, services: { credentials, sessions, registry, git } };
+  app.post("/api/v1/repositories/:id/capture/recover-codex", {
+    schema: { params: IdParams }
+  }, async (request) => {
+    const record = await repository(request, registry);
+    return recoverCodexTranscripts(record.root, config.transcriptRoots);
+  });
+
+  return {
+    app,
+    captureApp,
+    bootstrap,
+    services: { credentials, sessions, registry, git, capture }
+  };
 }
 
 async function repository(

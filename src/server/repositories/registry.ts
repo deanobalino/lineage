@@ -157,6 +157,14 @@ export class RepositoryRegistry {
     return record;
   }
 
+  async resolveByRoot(requestedRoot: string): Promise<RepositoryRecord> {
+    const canonical = await realpath(requestedRoot);
+    this.assertAllowed(canonical);
+    const record = this.#state.repositories.find((candidate) => candidate.root === canonical);
+    if (!record) throw new RepositoryError("Capture repository is not registered.");
+    return this.resolve(record.id);
+  }
+
   async browse(parent?: string): Promise<Array<{ name: string; path: string; repository: boolean }>> {
     const directory = parent ? await this.canonicalAllowed(parent) : this.#allowedRoots[0]!;
     const entries = await readdir(directory, { withFileTypes: true });
