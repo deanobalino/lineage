@@ -1,0 +1,22 @@
+[
+  {
+    "id": "openai-key",
+    "input": "key sk-proj-abcdefghijklmnopqrstuvwxyz123456",
+    "expected": "key [REDACTED]"
+  },
+  {
+    "id": "bearer",
+    "input": "Authorization: Bearer abcdefghijklmnopqrstuvwxyz.123",
+    "expected": "[REDACTED]"
+  },
+  {
+    "id": "assignment",
+    "input": "token=super-secret-value-1234567890",
+    "expected": "[REDACTED]"
+  },
+  {
+    "id": "ordinary-text",
+    "input": "MAX_RETRIES = 7",
+    "expected": "MAX_RETRIES = 7"
+  }
+]

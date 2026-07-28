@@ -1,0 +1,55 @@
+name: Compatibility oracle
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  swift-oracle:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.0"
+
+      - name: Confirm pinned baseline exists
+        run: git cat-file -e 105ef5d900a3511496f5b8a39d8ee70b1212bffa^{commit}
+
+      - name: Confirm characterized Swift surface still matches baseline
+        run: |
+          git diff --exit-code \
+            105ef5d900a3511496f5b8a39d8ee70b1212bffa \
+            -- Package.swift Sources/LineageCore Sources/lineage-capture
+
+      - name: Emit normalized Swift oracle
+        env:
+          LINEAGE_ORACLE_OUTPUT_DIR: ${{ runner.temp }}/lineage-oracle
+        run: swift test --filter CompatibilityOracleTests
+
+      - name: Verify fixture manifest and cutover matrix
+        run: |
+          mkdir -p "${RUNNER_TEMP}/lineage-parity"
+          node scripts/verify-parity.mjs \
+            --oracle "${RUNNER_TEMP}/lineage-oracle" \
+            --output "${RUNNER_TEMP}/lineage-parity/report.json"
+
+      - name: Retain normalized oracle and gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-compatibility-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/lineage-oracle/normalized.json
+            ${{ runner.temp }}/lineage-parity/report.json

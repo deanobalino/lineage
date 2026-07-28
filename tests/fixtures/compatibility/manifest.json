@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "105ef5d900a3511496f5b8a39d8ee70b1212bffa",
+  "oracleGenerator": "Tests/LineageCoreTests/CompatibilityOracleTests.swift",
+  "oracleFilename": "normalized.json",
+  "files": [
+    {
+      "path": "tests/fixtures/compatibility/legacy/events.jsonl",
+      "sha256": "257eb07e7ce9170a3beba6d5e8ba856efd051591d0dd2d22607d6c041229d346"
+    },
+    {
+      "path": "tests/fixtures/compatibility/legacy/sessions/codex-legacy-session.json",
+      "sha256": "42eab6cee10b4748b2584835e8ee7130df4c2293a0781e824c6913a0b4757ff9"
+    },
+    {
+      "path": "tests/fixtures/compatibility/transcripts/codex-session.jsonl",
+      "sha256": "8f2bce69003ceea6cea3ee1a4bf1dd9c6b003a4120a33e14555575b177c96a4d"
+    },
+    {
+      "path": "tests/fixtures/compatibility/redaction/cases.json",
+      "sha256": "11a9e45fad8ea3560934f5e30b1c057ba26d5abb8bf2f26a15af79bbffb8b915"
+    }
+  ]
+}
